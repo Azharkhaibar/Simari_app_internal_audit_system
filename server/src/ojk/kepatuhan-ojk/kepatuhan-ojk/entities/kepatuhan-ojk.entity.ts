@@ -8,7 +8,6 @@ import {
   OneToMany,
 } from 'typeorm';
 import { KepatuhanParameter } from './kepatuhan-paramater.entity';
-
 @Entity('kepatuhan_ojk')
 @Index(['year', 'quarter'], { unique: true })
 export class KepatuhanOjk {

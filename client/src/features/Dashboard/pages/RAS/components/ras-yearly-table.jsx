@@ -11,6 +11,12 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
   const yearMinus1 = year - 1;
   const currentYear = year;
 
+  // Hitung total kolom
+  const baseCols = 9; // kategori, no, statement, formulasi, tipe data, Y-2(RKAP+RAS), Y-1(RKAP+RAS)
+  const statsCols = showStats ? 8 : 0; // 8 kolom statistik
+  const currentCols = 2; // Y-0 (RKAP+RAS)
+  const totalCols = baseCols + statsCols + currentCols;
+
   // Debug log
   useEffect(() => {
     console.log('📊 RasYearlyTable Debug:');
@@ -22,7 +28,6 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
       const uniqueYears = [...new Set(allData.map((d) => d.year))];
       console.log('- Tahun yang tersedia di allData:', uniqueYears.sort());
 
-      // Cek apakah ada data untuk tahun yang dibutuhkan
       const hasYearMinus2 = allData.some((d) => d.year === yearMinus2);
       const hasYearMinus1 = allData.some((d) => d.year === yearMinus1);
 
@@ -38,7 +43,6 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
   const getHistoricalItem = (currentItem, targetYear) => {
     if (!allData || allData.length === 0) return null;
 
-    // Cari dengan multiple strategies
     const strategies = [
       // Strategy 1: Group ID + Tahun
       () => {
@@ -54,7 +58,6 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
           const sameYear = d.year === targetYear;
           const sameCategory = d.riskCategory === currentItem.riskCategory;
           const sameParam = d.parameter && currentItem.parameter && d.parameter.trim().toLowerCase() === currentItem.parameter.trim().toLowerCase();
-
           return sameYear && sameCategory && sameParam;
         });
       },
@@ -64,7 +67,6 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
         return allData.find((d) => {
           const sameYear = d.year === targetYear;
           const sameParam = d.parameter && currentItem.parameter && d.parameter.trim().toLowerCase() === currentItem.parameter.trim().toLowerCase();
-
           return sameYear && sameParam;
         });
       },
@@ -88,7 +90,6 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
       },
     ];
 
-    // Coba semua strategies
     for (const strategy of strategies) {
       const result = strategy();
       if (result) {
@@ -103,9 +104,7 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
 
   // --- IMPROVED calculateStats dengan graceful degradation ---
   const calculateStats = (currentItem) => {
-    if (!allData || allData.length === 0) {
-      return null;
-    }
+    if (!allData || allData.length === 0) return null;
 
     const yearsToCheck = [year - 3, year - 2, year - 1];
     let allValues = [];
@@ -116,8 +115,6 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
 
       if (histItem) {
         foundYears.push(y);
-
-        // Coba ambil data dari berbagai sumber
         let valuesFromItem = [];
 
         // Sumber 1: Monthly values
@@ -148,13 +145,11 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
           if (annualValue) {
             let val = parseFloat(annualValue);
             if (!isNaN(val)) {
-              // Normalisasi unit
               if (currentItem.unitType === 'X' && histItem.unitType === 'PERCENTAGE') {
                 val = val / 100;
               } else if (currentItem.unitType === 'PERCENTAGE' && histItem.unitType === 'X') {
                 val = val * 100;
               }
-
               valuesFromItem.push(val);
             }
           }
@@ -166,11 +161,8 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
 
     console.log(`📈 Stats for ${currentItem.parameter}: Found ${allValues.length} values from years ${foundYears.join(', ')}`);
 
-    if (allValues.length === 0) {
-      return null;
-    }
+    if (allValues.length === 0) return null;
 
-    // Hitung statistik
     const N = allValues.length;
     const min = Math.min(...allValues);
     const max = Math.max(...allValues);
@@ -319,7 +311,7 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
           <tbody className="text-gray-800">
             {Object.keys(groupedData).length === 0 ? (
               <tr>
-                <td colSpan={showStats ? 19 : 11} className="p-8 text-center text-gray-500 bg-gray-50">
+                <td colSpan={totalCols} className="p-8 text-center text-gray-500 bg-gray-50">
                   <div className="inline-flex p-3 bg-white rounded-full mb-2 shadow-sm border border-gray-200">
                     <FileText className="w-6 h-6 text-gray-400" />
                   </div>
@@ -342,6 +334,7 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
 
                       return (
                         <React.Fragment key={item.id}>
+                          {/* Main Row */}
                           <tr className="hover:bg-blue-50/50 transition-colors border-b border-gray-300">
                             {isFirst && (
                               <td rowSpan={totalRows} className="px-4 py-3 font-bold align-top bg-white border border-gray-400 text-gray-900">
@@ -412,37 +405,90 @@ export default function RasYearlyTable({ rows, allData, year, onUpdate, loading 
 
                             {/* Tahun Current - Editable */}
                             <td rowSpan={itemSpan} className="px-1 py-1 text-center align-top border border-gray-400 bg-blue-50">
-                              <div className="flex items-center gap-1 w-full h-full">
-                                <input
-                                  type="text"
-                                  value={item.rkapTarget || ''}
-                                  onChange={(e) => onUpdate(item.id, 'rkapTarget', e.target.value)}
-                                  className="w-full h-full bg-transparent text-center text-xs font-semibold text-blue-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-400 rounded px-1 py-2"
-                                  placeholder="N/A"
-                                />
-                              </div>
+                              <input
+                                type="text"
+                                value={item.rkapTarget || ''}
+                                onChange={(e) => onUpdate(item.id, 'rkapTarget', e.target.value)}
+                                className="w-full bg-transparent text-center text-xs font-semibold text-blue-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-400 rounded px-1 py-2"
+                                placeholder="N/A"
+                              />
                             </td>
                             <td rowSpan={itemSpan} className="px-1 py-1 text-center align-top border border-gray-400 bg-blue-50">
-                              <div className="flex items-center gap-1 w-full h-full">
-                                <input
-                                  type="text"
-                                  value={item.rasLimit || ''}
-                                  onChange={(e) => onUpdate(item.id, 'rasLimit', e.target.value)}
-                                  className="w-full h-full bg-transparent text-center text-xs font-bold text-red-600 focus:outline-none focus:bg-white focus:ring-2 focus:ring-red-400 rounded px-1 py-2"
-                                  placeholder="N/A"
-                                />
-                              </div>
+                              <input
+                                type="text"
+                                value={item.rasLimit || ''}
+                                onChange={(e) => onUpdate(item.id, 'rasLimit', e.target.value)}
+                                className="w-full bg-transparent text-center text-xs font-bold text-red-600 focus:outline-none focus:bg-white focus:ring-2 focus:ring-red-400 rounded px-1 py-2"
+                                placeholder="N/A"
+                              />
                             </td>
                           </tr>
+
+                          {/* Numerator Row */}
                           {showNumDen && hasCalc && (
-                            <>
-                              <tr className="bg-indigo-50/50 text-xs text-gray-600">
-                                <td className="px-4 py-2 border border-gray-400 italic text-black bg-indigo-50">{item.numeratorLabel || 'Pembilang'}</td>
-                              </tr>z
-                              <tr className="bg-indigo-50/50 text-xs text-gray-600">
-                                <td className="px-4 py-2 border border-gray-400 italic text-black bg-indigo-50">{item.denominatorLabel || 'Penyebut'}</td>
-                              </tr>
-                            </>
+                            <tr className="bg-indigo-50/50 text-xs text-gray-600 border-b border-gray-300">
+                              <td className="px-4 py-2 border border-gray-400 italic text-black bg-indigo-50" colSpan={2}>
+                                {item.numeratorLabel || 'Pembilang'}
+                              </td>
+                              {/* Placeholder cells untuk menjaga struktur tabel */}
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              {/* Statistik placeholder */}
+                              {showStats && (
+                                <>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                </>
+                              )}
+                              {/* Current year placeholder */}
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                            </tr>
+                          )}
+
+                          {/* Denominator Row */}
+                          {showNumDen && hasCalc && (
+                            <tr className="bg-indigo-50/50 text-xs text-gray-600 border-b border-gray-300">
+                              <td className="px-4 py-2 border border-gray-400 italic text-black bg-indigo-50" colSpan={2}>
+                                {item.denominatorLabel || 'Penyebut'}
+                              </td>
+                              {/* Placeholder cells */}
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              {/* Statistik placeholder */}
+                              {showStats && (
+                                <>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                  <td className="border border-gray-400 bg-indigo-50"></td>
+                                </>
+                              )}
+                              {/* Current year placeholder */}
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                              <td className="border border-gray-400 bg-indigo-50"></td>
+                            </tr>
                           )}
                         </React.Fragment>
                       );

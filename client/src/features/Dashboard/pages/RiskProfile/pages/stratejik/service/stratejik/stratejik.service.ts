@@ -1,5 +1,6 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/services/strategik.service.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Stratejik/services/stratejik.service.ts
 import axios, { AxiosResponse } from 'axios';
+import { SectionsWithIndicatorsResponse } from '../../pasar/service/pasar/pasar.service';
 
 // ENUMS
 export enum CalculationMode {
@@ -16,7 +17,7 @@ export enum Quarter {
 }
 
 // INTERFACES
-export interface StrategikSection {
+export interface StratejikSection {
   id: number;
   no: string;
   bobotSection: number;
@@ -31,7 +32,7 @@ export interface StrategikSection {
   updatedBy?: string | null;
 }
 
-export interface StrategikIndikator {
+export interface StratejikIndikator {
   id: number;
   year: number;
   quarter: Quarter;
@@ -69,10 +70,10 @@ export interface StrategikIndikator {
   createdBy?: string | null;
   updatedBy?: string | null;
   deletedBy?: string | null;
-  section?: StrategikSection;
+  section?: StratejikSection;
 }
 
-export interface CreateStrategikSectionData {
+export interface CreateStratejikSectionData {
   no: string;
   parameter: string;
   bobotSection?: number;
@@ -81,7 +82,7 @@ export interface CreateStrategikSectionData {
   isActive?: boolean;
 }
 
-export interface UpdateStrategikSectionData {
+export interface UpdateStratejikSectionData {
   no?: string;
   parameter?: string;
   bobotSection?: number;
@@ -90,7 +91,7 @@ export interface UpdateStrategikSectionData {
   isActive?: boolean;
 }
 
-export interface CreateStrategikData {
+export interface CreateStratejikData {
   year: number;
   quarter: Quarter;
   sectionId: number;
@@ -122,7 +123,7 @@ export interface CreateStrategikData {
   createdBy?: string;
 }
 
-export interface UpdateStrategikData {
+export interface UpdateStratejikData {
   year?: number;
   quarter?: Quarter;
   sectionId?: number;
@@ -162,6 +163,11 @@ export interface Period {
   quarter: Quarter;
 }
 
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+}
+
 // UTILITY FUNCTIONS
 export const fmtNumber = (v: any): string => {
   if (v === '' || v == null) return '';
@@ -196,6 +202,12 @@ export const computeHasil = (ind: any): number | null => {
 
   const pemb = parseNum(ind.pembilangValue);
   const peny = parseNum(ind.penyebutValue);
+
+  // 🔹 Validasi untuk mode RASIO
+  if (mode === 'RASIO' && peny === 0) {
+    console.warn('Penyebut value adalah 0 untuk mode RASIO');
+    return null; // Kembalikan null, jangan throw error
+  }
 
   if (ind.formula && ind.formula.trim() !== '') {
     try {
@@ -237,8 +249,19 @@ export const computeWeightedAuto = (ind: any, sectionBobot: number): number => {
   return res;
 };
 
-export const transformIndicatorToBackend = (indicatorData: any, year: number, quarter: Quarter, sectionId: number, sectionData: any): CreateStrategikData => {
+export const transformIndicatorToBackend = (indicatorData: any, year: number, quarter: Quarter, sectionId: number, sectionData: any): CreateStratejikData => {
   const hasilNum = computeHasil(indicatorData);
+
+  // Validasi khusus untuk mode RASIO
+  let penyebutValue = indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined;
+
+  // Untuk mode RASIO, jika penyebut 0 atau undefined, set ke null agar backend menolak
+  if (indicatorData.mode === CalculationMode.RASIO) {
+    if (penyebutValue === 0 || penyebutValue === undefined || isNaN(penyebutValue)) {
+      console.warn('Penyebut value untuk mode RASIO tidak valid:', penyebutValue);
+      // Biarkan undefined, backend akan memberikan error validasi
+    }
+  }
 
   return {
     year,
@@ -263,7 +286,7 @@ export const transformIndicatorToBackend = (indicatorData: any, year: number, qu
     pembilangLabel: indicatorData.pembilangLabel?.trim() || undefined,
     pembilangValue: indicatorData.pembilangValue !== undefined && indicatorData.pembilangValue !== '' ? Number(indicatorData.pembilangValue) : undefined,
     penyebutLabel: indicatorData.penyebutLabel?.trim() || undefined,
-    penyebutValue: indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined,
+    penyebutValue: penyebutValue, // Gunakan hasil validasi
     hasil: hasilNum !== null ? hasilNum : undefined,
     hasilText: indicatorData.mode === CalculationMode.TEKS ? indicatorData.hasilText || indicatorData.keterangan || '' : undefined,
     peringkat: Number(indicatorData.peringkat) || 1,
@@ -272,7 +295,7 @@ export const transformIndicatorToBackend = (indicatorData: any, year: number, qu
   };
 };
 
-export const transformIndicatorToFrontend = (indikator: StrategikIndikator): any => {
+export const transformIndicatorToFrontend = (indikator: StratejikIndikator): any => {
   return {
     id: indikator.id,
     subNo: indikator.subNo || '',
@@ -307,7 +330,7 @@ export const transformIndicatorToFrontend = (indikator: StrategikIndikator): any
   };
 };
 
-export const transformSectionToBackend = (sectionData: any, year: number, quarter: Quarter): CreateStrategikSectionData => {
+export const transformSectionToBackend = (sectionData: any, year: number, quarter: Quarter): CreateStratejikSectionData => {
   return {
     no: String(sectionData.no),
     bobotSection: Number(sectionData.bobotSection || 0),
@@ -323,83 +346,104 @@ export const rowsPerIndicator = (ind: any): number => {
 };
 
 // API SERVICE
-class StrategikApiService {
+class StratejikApiService {
   private baseUrl: string;
 
   constructor() {
     this.baseUrl = 'http://localhost:5530/api/v1';
   }
 
-  async createSection(data: CreateStrategikSectionData): Promise<StrategikSection> {
-    return this.request<StrategikSection>('post', '/strategik/sections', data);
+  async createSection(data: CreateStratejikSectionData): Promise<StratejikSection> {
+    return this.request<StratejikSection>('post', '/stratejik/sections', data);
   }
 
-  async getAllSections(isActive?: boolean): Promise<StrategikSection[]> {
+  async getAllSections(isActive?: boolean): Promise<StratejikSection[]> {
     const params = isActive !== undefined ? { isActive } : {};
-    return this.request<StrategikSection[]>('get', '/strategik/sections', null, params);
+    return this.request<StratejikSection[]>('get', '/stratejik/sections', null, params);
   }
 
-  async getSectionById(id: number): Promise<StrategikSection> {
-    return this.request<StrategikSection>('get', `/strategik/sections/${id}`);
+  async getSectionById(id: number): Promise<StratejikSection> {
+    return this.request<StratejikSection>('get', `/stratejik/sections/${id}`);
   }
 
-  async updateSection(id: number, data: UpdateStrategikSectionData): Promise<StrategikSection> {
-    return this.request<StrategikSection>('put', `/strategik/sections/${id}`, data);
+  async updateSection(id: number, data: UpdateStratejikSectionData): Promise<StratejikSection> {
+    return this.request<StratejikSection>('put', `/stratejik/sections/${id}`, data);
   }
 
-  async deleteSection(id: number): Promise<void> {
-    return this.request<void>('delete', `/strategik/sections/${id}`);
+  async deleteSection(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/stratejik/sections/${id}`);
   }
 
   // ========== INDIKATOR API ==========
-  async createIndikator(data: CreateStrategikData): Promise<StrategikIndikator> {
-    return this.request<StrategikIndikator>('post', '/strategik/indikators', data);
+  async createIndikator(data: CreateStratejikData): Promise<StratejikIndikator> {
+    return this.request<StratejikIndikator>('post', '/stratejik/indikators', data);
   }
 
-  async getAllIndikators(): Promise<StrategikIndikator[]> {
-    return this.request<StrategikIndikator[]>('get', '/strategik/indikators');
+  async getAllIndikators(): Promise<StratejikIndikator[]> {
+    return this.request<StratejikIndikator[]>('get', '/stratejik/indikators');
   }
 
-  async getIndikatorsByPeriod(year: number, quarter: Quarter): Promise<StrategikIndikator[]> {
-    return this.request<StrategikIndikator[]>('get', '/strategik/indikators/period', null, { year, quarter });
+  async getIndikatorsByPeriod(year: number, quarter: Quarter): Promise<StratejikIndikator[]> {
+    return this.request<StratejikIndikator[]>('get', '/stratejik/indikators/period', null, { year, quarter });
   }
 
-  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<Array<StrategikSection & { indicators: StrategikIndikator[] }>> {
-    return this.request<Array<StrategikSection & { indicators: StrategikIndikator[] }>>('get', '/strategik/indikators/sections-by-period', null, { year, quarter });
+  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<any> {
+    try {
+      console.log(`📡 Calling API: getSectionsWithIndicatorsByPeriod for ${year}-${quarter}`);
+
+      const params = new URLSearchParams();
+      params.append('year', String(year));
+      params.append('quarter', String(quarter));
+
+      const url = `${this.baseUrl}/stratejik/data/with-indicators?${params.toString()}`;
+      console.log('🔍 Full URL:', url);
+
+      const response = await axios.get(url);
+
+      console.log('✅ Response from backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error in getSectionsWithIndicatorsByPeriod:', error);
+      this.handleError(error);
+      throw error;
+    }
   }
 
-  async searchIndikators(query?: string, year?: number, quarter?: Quarter): Promise<StrategikIndikator[]> {
+  async searchIndikators(query?: string, year?: number, quarter?: Quarter): Promise<StratejikIndikator[]> {
     const params: any = {};
     if (query) params.query = query;
     if (year) params.year = year;
     if (quarter) params.quarter = quarter;
 
-    return this.request<StrategikIndikator[]>('get', '/strategik/indikators/search', null, params);
+    return this.request<StratejikIndikator[]>('get', '/stratejik/indikators/search', null, params);
   }
 
-  async getIndikatorById(id: number): Promise<StrategikIndikator> {
-    return this.request<StrategikIndikator>('get', `/strategik/indikators/${id}`);
+  async getIndikatorById(id: number): Promise<StratejikIndikator> {
+    return this.request<StratejikIndikator>('get', `/stratejik/indikators/${id}`);
   }
 
-  async updateIndikator(id: number, data: UpdateStrategikData): Promise<StrategikIndikator> {
-    return this.request<StrategikIndikator>('put', `/strategik/indikators/${id}`, data);
+  async updateIndikator(id: number, data: UpdateStratejikData): Promise<StratejikIndikator> {
+    return this.request<StratejikIndikator>('put', `/stratejik/indikators/${id}`, data);
   }
 
-  async deleteIndikator(id: number): Promise<void> {
-    return this.request<void>('delete', `/strategik/indikators/${id}`);
+  async deleteIndikator(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/stratejik/indikators/${id}`);
   }
 
   async getTotalWeightedByPeriod(year: number, quarter: Quarter): Promise<number> {
-    const response = await this.request<TotalWeightedResponse>('get', '/strategik/total-weighted', null, { year, quarter });
+    const response = await this.request<TotalWeightedResponse>('get', '/stratejik/total-weighted', null, { year, quarter });
     return response.total;
   }
 
   async getAvailablePeriods(): Promise<Period[]> {
-    return this.request<Period[]>('get', '/strategik/periods');
+    return this.request<Period[]>('get', '/stratejik/periods');
   }
 
-  async duplicateIndikator(sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<StrategikIndikator> {
-    return this.request<StrategikIndikator>('post', `/strategik/indikators/${sourceId}/duplicate`, null, { year: targetYear, quarter: targetQuarter });
+  async duplicateIndikator(sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<StratejikIndikator> {
+    return this.request<StratejikIndikator>('post', `/stratejik/indikators/${sourceId}/duplicate`, null, {
+      year: targetYear,
+      quarter: targetQuarter,
+    });
   }
 
   // ========== HELPER METHODS ==========
@@ -461,16 +505,5 @@ class StrategikApiService {
   }
 }
 
-// Export singleton instance and all utilities
-export const strategikApiService = new StrategikApiService();
-// export {
-//   // Re-export semua utilities
-//   fmtNumber,
-//   formatHasilNumber,
-//   parseNum,
-//   computeHasil,
-//   computeWeightedAuto,
-//   transformIndicatorToBackend,
-//   transformIndicatorToFrontend,
-//   transformSectionToBackend,
-// };
+// Export singleton instance
+export const stratejikApiService = new StratejikApiService();

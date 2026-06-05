@@ -8,13 +8,11 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-// import { KpmrAspekKredit } from './kredit-produk-kpmr-aspek.entity';
-
 import { KpmrAspekKredit } from './kredit-kpmr-aspek.entity';
 
 @Entity('kpmr_pertanyaan_kredit')
-@Index(['aspekId', 'nomor'], { unique: false })
-@Index(['aspekId', 'orderIndex'], { unique: false })
+@Index(['aspekId', 'nomor'])
+@Index(['aspekId', 'orderIndex'])
 @Index(['aspekId', 'createdAt'])
 export class KpmrPertanyaanKredit {
   @PrimaryGeneratedColumn()

@@ -1,4 +1,4 @@
-// src/entities/strategik/strategik.entity.ts
+// src/entities/strategik/stratejik.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +10,8 @@ import {
   Index,
   Unique,
 } from 'typeorm';
-import { StrategikSection } from './stratejik-section.entity';
+import { StratejikSection } from './stratejik-section.entity';
+
 export enum CalculationMode {
   RASIO = 'RASIO',
   NILAI_TUNGGAL = 'NILAI_TUNGGAL',
@@ -24,12 +25,11 @@ export enum Quarter {
   Q4 = 'Q4',
 }
 
-@Entity('indikators_strategik')
-@Unique('UQ_STRATEGIK_PERIOD_SUBNO', ['year', 'quarter', 'subNo', 'sectionId'])
-@Index('IDX_STRATEGIK_PERIOD', ['year', 'quarter'])
-@Index('IDX_STRATEGIK_SECTION', ['sectionId'])
-@Index('IDX_STRATEGIK_YEAR_QUARTER', ['year', 'quarter'])
-export class Strategik {
+@Entity('indikators_stratejik_holding')
+@Unique('UQ_STRATEJIK_PERIOD_SUBNO', ['year', 'quarter', 'subNo', 'sectionId'])
+@Index('IDX_STRATEJIK_PERIOD', ['year', 'quarter'])
+@Index('IDX_STRATEJIK_SECTION', ['sectionId'])
+export class Stratejik {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -44,16 +44,16 @@ export class Strategik {
   @Column({ name: 'section_id' })
   sectionId: number;
 
-  @ManyToOne(() => StrategikSection, (section) => section.strategikIndicators, {
+  @ManyToOne(() => StratejikSection, (section) => section.stratejikIndicators, {
     onUpdate: 'CASCADE',
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'section_id' })
-  section: StrategikSection;
+  section: StratejikSection;
 
   // ========== DATA SECTION (Copy dari master) ==========
   @Column({ type: 'varchar', length: 50 })
-  no: string; // No section, contoh: "6.1"
+  no: string;
 
   @Column({
     type: 'varchar',
@@ -76,7 +76,7 @@ export class Strategik {
     length: 50,
     name: 'sub_no',
   })
-  subNo: string; // Contoh: "6.1.1" - UNIK per periode+section
+  subNo: string;
 
   @Column({ type: 'varchar', length: 1000 })
   indikator: string;
@@ -195,7 +195,7 @@ export class Strategik {
   @Column({
     type: 'decimal',
     precision: 15,
-    scale: 4,
+    scale: 6,
     nullable: true,
   })
   hasil: number | null;
@@ -215,7 +215,7 @@ export class Strategik {
   @Column({
     type: 'decimal',
     precision: 10,
-    scale: 2,
+    scale: 4,
   })
   weighted: number;
 

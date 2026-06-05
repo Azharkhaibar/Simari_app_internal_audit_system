@@ -1,5 +1,3 @@
-// pasar-produk-ojk.entity.ts
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -8,13 +6,11 @@ import {
   UpdateDateColumn,
   Index,
   OneToMany,
-  JoinColumn,
 } from 'typeorm';
-import { PasarParameter } from './pasar-produk-parameter.entity';
-
+import { PasarProdukParameter } from './pasar-produk-parameter.entity';
 @Entity('pasar_produk_ojk')
 @Index(['year', 'quarter'], { unique: true })
-export class PasarProdukOjk {
+export class PasarProduk {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -27,12 +23,11 @@ export class PasarProdukOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  // Relasi ke parameter
-  @OneToMany(() => PasarParameter, (parameter) => parameter.pasarProdukOjk, {
+  @OneToMany(() => PasarProdukParameter, (parameter) => parameter.pasarProduk, {
     cascade: true,
-    eager: false, // Gunakan lazy/eager sesuai kebutuhan
+    eager: false,
   })
-  parameters?: PasarParameter[];
+  parameters?: PasarProdukParameter[];
 
   @Column({ type: 'json', nullable: true })
   summary?: {

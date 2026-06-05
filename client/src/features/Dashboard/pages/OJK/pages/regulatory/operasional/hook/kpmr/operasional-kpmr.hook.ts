@@ -224,11 +224,11 @@ export function useKpmrOperasional(): UseKpmrOperasionalReturn {
 
     if (loadingRef.current) {
       console.log('⏳ [Hook] Refresh already in progress...');
-      return rows;
+      return [];
     }
 
     loadingRef.current = true;
-    safeSet(setLoading, true);
+    safeSet(setSaving, true); // use saving, NOT loading — avoids parent page-level loading gate
 
     try {
       const cleanIdNum = cleanId(kpmr.id);
@@ -249,12 +249,12 @@ export function useKpmrOperasional(): UseKpmrOperasionalReturn {
           variant: 'destructive',
         });
       }
-      return rows;
+      return [];
     } finally {
       loadingRef.current = false;
-      safeSet(setLoading, false);
+      safeSet(setSaving, false);
     }
-  }, [kpmr?.id, cleanId, toast, rows]);
+  }, [kpmr?.id, cleanId, toast]);
 
   // ========== ASPEK OPERATIONS ==========
   const addAspek = useCallback(

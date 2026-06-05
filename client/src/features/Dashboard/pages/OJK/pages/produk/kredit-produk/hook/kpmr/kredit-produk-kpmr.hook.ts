@@ -1,18 +1,19 @@
+// kredit-produk-kpmr.hook.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useToast } from '../../components/use-toast';
-import kpmrKreditApiService, {
+import kpmrKreditProdukApiService, {
   FrontendKpmrResponse,
   FrontendAspekResponse,
   FrontendPertanyaanResponse,
-  CreateKpmrAspekKreditDto,
-  CreateKpmrPertanyaanKreditDto,
-  UpdateKpmrAspekKreditDto,
-  UpdateKpmrPertanyaanKreditDto,
+  CreateKpmrAspekKreditProdukDto,
+  CreateKpmrPertanyaanKreditProdukDto,
+  UpdateKpmrAspekKreditProdukDto,
+  UpdateKpmrPertanyaanKreditProdukDto,
   UpdateSkorDto,
-  CreateKpmrKreditOjkDto,
+  CreateKpmrKreditProdukOjkDto,
 } from '../../services/kpmr/kredit-produk-kpmr.service';
 
-interface UseKpmrKreditReturn {
+interface UseKpmrKreditProdukReturn {
   // State
   kpmr: FrontendKpmrResponse | null;
   rows: FrontendAspekResponse[];
@@ -27,13 +28,13 @@ interface UseKpmrKreditReturn {
   createKpmr: (year: number, quarter: number) => Promise<FrontendKpmrResponse | null>;
 
   // Aspek operations
-  addAspek: (kpmrId: number | string, aspekData: CreateKpmrAspekKreditDto) => Promise<FrontendAspekResponse>;
-  updateAspek: (id: number | string, aspekData: UpdateKpmrAspekKreditDto) => Promise<FrontendAspekResponse>;
+  addAspek: (kpmrId: number | string, aspekData: CreateKpmrAspekKreditProdukDto) => Promise<FrontendAspekResponse>;
+  updateAspek: (id: number | string, aspekData: UpdateKpmrAspekKreditProdukDto) => Promise<FrontendAspekResponse>;
   deleteAspek: (id: number | string) => Promise<void>;
 
   // Pertanyaan operations
-  addPertanyaan: (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanKreditDto) => Promise<FrontendPertanyaanResponse>;
-  updatePertanyaan: (id: number | string, pertanyaanData: UpdateKpmrPertanyaanKreditDto) => Promise<FrontendPertanyaanResponse>;
+  addPertanyaan: (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanKreditProdukDto) => Promise<FrontendPertanyaanResponse>;
+  updatePertanyaan: (id: number | string, pertanyaanData: UpdateKpmrPertanyaanKreditProdukDto) => Promise<FrontendPertanyaanResponse>;
   deletePertanyaan: (id: number | string) => Promise<void>;
   updateSkor: (id: number | string, quarter: string, skor: number) => Promise<FrontendPertanyaanResponse>;
 
@@ -46,7 +47,7 @@ interface UseKpmrKreditReturn {
   hasError: boolean;
 }
 
-export function useKpmrKredit(): UseKpmrKreditReturn {
+export function useKpmrKreditProduk(): UseKpmrKreditProdukReturn {
   const { toast } = useToast();
 
   const [kpmr, setKpmr] = useState<FrontendKpmrResponse | null>(null);
@@ -73,7 +74,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
   };
 
   const cleanId = useCallback((id: string | number): number => {
-    return kpmrKreditApiService.cleanId(id);
+    return kpmrKreditProdukApiService.cleanId(id);
   }, []);
 
   // ========== LOAD KPMR ==========
@@ -95,13 +96,13 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
       safeSet(setError, null);
 
       try {
-        const data = await kpmrKreditApiService.getKpmrByYearQuarter(targetYear, targetQuarter, true);
+        const data = await kpmrKreditProdukApiService.getKpmrByYearQuarter(targetYear, targetQuarter, true);
 
         if (!mountedRef.current) return;
 
         safeSet(setKpmr, data);
         safeSet(setCurrentKpmrId, data.id);
-        const frontendRows = kpmrKreditApiService.convertToFrontendFormat(data);
+        const frontendRows = kpmrKreditProdukApiService.convertToFrontendFormat(data);
         safeSet(setRows, frontendRows);
 
         // ✅ Simpan parameter yang sudah dimuat
@@ -160,7 +161,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
         }
 
         // ✅ KIRIM SEBAGAI NUMBER (1,2,3,4) LANGSUNG KE SERVICE
-        const payload: CreateKpmrKreditOjkDto = {
+        const payload: CreateKpmrKreditProdukOjkDto = {
           year: yearNum,
           quarter: quarterNum, // KIRIM NUMBER, JANGAN DIKONVERSI!
           isActive: true,
@@ -170,7 +171,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
 
         console.log('📦 [Hook] Sending payload:', payload);
 
-        const data = await kpmrKreditApiService.createKpmr(payload);
+        const data = await kpmrKreditProdukApiService.createKpmr(payload);
 
         if (!mountedRef.current) return null;
 
@@ -181,7 +182,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
 
         safeSet(setKpmr, data);
         safeSet(setCurrentKpmrId, data.id);
-        const frontendRows = kpmrKreditApiService.convertToFrontendFormat(data);
+        const frontendRows = kpmrKreditProdukApiService.convertToFrontendFormat(data);
         safeSet(setRows, frontendRows);
 
         lastLoadedYearRef.current = { year: yearNum, quarter: quarterNum };
@@ -223,20 +224,20 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
 
     if (loadingRef.current) {
       console.log('⏳ [Hook] Refresh already in progress...');
-      return rows;
+      return [];
     }
 
     loadingRef.current = true;
-    safeSet(setLoading, true);
+    safeSet(setSaving, true); // use saving, NOT loading — avoids parent page-level loading gate
 
     try {
       const cleanIdNum = cleanId(kpmr.id);
-      const freshData = await kpmrKreditApiService.getKpmrWithRelations(cleanIdNum);
+      const freshData = await kpmrKreditProdukApiService.getKpmrWithRelations(cleanIdNum);
 
       if (!mountedRef.current) return [];
 
       safeSet(setKpmr, freshData);
-      const frontendRows = kpmrKreditApiService.convertToFrontendFormat(freshData);
+      const frontendRows = kpmrKreditProdukApiService.convertToFrontendFormat(freshData);
       safeSet(setRows, frontendRows);
 
       return frontendRows;
@@ -248,16 +249,16 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           variant: 'destructive',
         });
       }
-      return rows;
+      return [];
     } finally {
       loadingRef.current = false;
-      safeSet(setLoading, false);
+      safeSet(setSaving, false);
     }
-  }, [kpmr?.id, cleanId, toast, rows]);
+  }, [kpmr?.id, cleanId, toast]);
 
   // ========== ASPEK OPERATIONS ==========
   const addAspek = useCallback(
-    async (kpmrId: number | string, aspekData: CreateKpmrAspekKreditDto): Promise<FrontendAspekResponse> => {
+    async (kpmrId: number | string, aspekData: CreateKpmrAspekKreditProdukDto): Promise<FrontendAspekResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -279,7 +280,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           throw new Error('Bobot harus antara 0 dan 100');
         }
 
-        const payload: CreateKpmrAspekKreditDto = {
+        const payload: CreateKpmrAspekKreditProdukDto = {
           nomor: aspekData.nomor || '-',
           judul: aspekData.judul.trim(),
           bobot: bobotNum,
@@ -288,7 +289,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           pertanyaanList: aspekData.pertanyaanList || [],
         };
 
-        const newAspek = await kpmrKreditApiService.createAspek(cleanKpmrId, payload);
+        const newAspek = await kpmrKreditProdukApiService.createAspek(cleanKpmrId, payload);
 
         if (!mountedRef.current) return newAspek;
 
@@ -308,7 +309,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
   );
 
   const updateAspek = useCallback(
-    async (id: number | string, aspekData: UpdateKpmrAspekKreditDto): Promise<FrontendAspekResponse> => {
+    async (id: number | string, aspekData: UpdateKpmrAspekKreditProdukDto): Promise<FrontendAspekResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -330,7 +331,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           aspekData.bobot = bobotNum;
         }
 
-        const updatedAspek = await kpmrKreditApiService.updateAspek(cleanIdNum, aspekData);
+        const updatedAspek = await kpmrKreditProdukApiService.updateAspek(cleanIdNum, aspekData);
 
         if (!mountedRef.current) return updatedAspek;
 
@@ -360,7 +361,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
 
       try {
         const cleanIdNum = cleanId(id);
-        await kpmrKreditApiService.deleteAspek(cleanIdNum);
+        await kpmrKreditProdukApiService.deleteAspek(cleanIdNum);
 
         if (!mountedRef.current) return;
 
@@ -380,7 +381,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
 
   // ========== PERTANYAAN OPERATIONS ==========
   const addPertanyaan = useCallback(
-    async (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanKreditDto): Promise<FrontendPertanyaanResponse> => {
+    async (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanKreditProdukDto): Promise<FrontendPertanyaanResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -394,7 +395,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           throw new Error('Pertanyaan tidak boleh kosong');
         }
 
-        const payload: CreateKpmrPertanyaanKreditDto = {
+        const payload: CreateKpmrPertanyaanKreditProdukDto = {
           nomor: pertanyaanData.nomor || '',
           pertanyaan: pertanyaanData.pertanyaan.trim(),
           skor: pertanyaanData.skor || {},
@@ -410,7 +411,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           orderIndex: pertanyaanData.orderIndex || 0,
         };
 
-        const newPertanyaan = await kpmrKreditApiService.createPertanyaan(cleanAspekId, payload);
+        const newPertanyaan = await kpmrKreditProdukApiService.createPertanyaan(cleanAspekId, payload);
 
         if (!mountedRef.current) return newPertanyaan;
 
@@ -430,7 +431,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
   );
 
   const updatePertanyaan = useCallback(
-    async (id: number | string, pertanyaanData: UpdateKpmrPertanyaanKreditDto): Promise<FrontendPertanyaanResponse> => {
+    async (id: number | string, pertanyaanData: UpdateKpmrPertanyaanKreditProdukDto): Promise<FrontendPertanyaanResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -444,7 +445,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           throw new Error('Pertanyaan tidak boleh kosong');
         }
 
-        const updatedPertanyaan = await kpmrKreditApiService.updatePertanyaan(cleanIdNum, pertanyaanData);
+        const updatedPertanyaan = await kpmrKreditProdukApiService.updatePertanyaan(cleanIdNum, pertanyaanData);
 
         if (!mountedRef.current) return updatedPertanyaan;
 
@@ -474,7 +475,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
 
       try {
         const cleanIdNum = cleanId(id);
-        await kpmrKreditApiService.deletePertanyaan(cleanIdNum);
+        await kpmrKreditProdukApiService.deletePertanyaan(cleanIdNum);
 
         if (!mountedRef.current) return;
 
@@ -506,7 +507,7 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
           quarter: quarter as 'Q1' | 'Q2' | 'Q3' | 'Q4',
           skor: skor,
         };
-        const updatedPertanyaan = await kpmrKreditApiService.updateSkor(cleanIdNum, updateSkorDto);
+        const updatedPertanyaan = await kpmrKreditProdukApiService.updateSkor(cleanIdNum, updateSkorDto);
 
         if (!mountedRef.current) return updatedPertanyaan;
 
@@ -560,4 +561,4 @@ export function useKpmrKredit(): UseKpmrKreditReturn {
   };
 }
 
-export default useKpmrKredit;
+export default useKpmrKreditProduk;

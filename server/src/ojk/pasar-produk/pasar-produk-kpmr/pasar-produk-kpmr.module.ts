@@ -2,26 +2,24 @@
 
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { KpmrPasarService } from './pasar-produk-kpmr.service';
-import { KpmrPasarController } from './pasar-produk-kpmr.controller';
-import { KpmrPasarOjk } from './entities/pasar-produk-ojk.entity';
-import { KpmrAspekPasar } from './entities/pasar-produk-kpmr-aspek.entity'; // IMPORT DARI FILE TERPISAH
-import { KpmrPertanyaanPasar } from './entities/pasar-produk-kpmr-pertanyaan.entity';
-import { PasarProdukOjk } from '../pasar-produk-ojk/entities/pasar-produk-ojk.entity';
-import { PasarProdukOjkModule } from '../pasar-produk-ojk/pasar-produk-ojk.module';
+
+import { KpmrAspekPasarProduk } from './entities/pasar-produk-kpmr-aspek.entity'; // IMPORT DARI FILE TERPISAH
+import { KpmrPertanyaanPasarProduk } from './entities/pasar-produk-kpmr-pertanyaan.entity';
+import { KpmrPasarProdukOjk } from './entities/pasar-produk-ojk.entity';
+import { KpmrPasarProdukController } from './pasar-produk-kpmr.controller';
+import { KpmrPasarProdukService } from './pasar-produk-kpmr.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      KpmrPasarOjk,
-      KpmrAspekPasar,
-      KpmrPertanyaanPasar,
-      PasarProdukKpmrModule,
-      PasarProdukOjkModule,
+      KpmrPasarProdukOjk,
+      KpmrAspekPasarProduk,
+      KpmrPertanyaanPasarProduk,
+      // ✅ HAPUS: PasarProdukKpmrModule - ini menyebabkan circular dependency
     ]),
   ],
-  controllers: [KpmrPasarController],
-  providers: [KpmrPasarService],
-  exports: [KpmrPasarService],
+  controllers: [KpmrPasarProdukController],
+  providers: [KpmrPasarProdukService],
+  exports: [KpmrPasarProdukService],
 })
 export class PasarProdukKpmrModule {}

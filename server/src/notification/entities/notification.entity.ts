@@ -22,7 +22,7 @@ export class Notification {
   @PrimaryGeneratedColumn()
   notification_id: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'int', nullable: true })
   @Index()
   user_id: number | null;
 
@@ -59,6 +59,6 @@ export class Notification {
   @Index()
   created_at: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   expires_at: Date | null;
 }

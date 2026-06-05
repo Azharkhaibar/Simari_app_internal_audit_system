@@ -1,4 +1,4 @@
-// src/entities/hukum/hukum-section.entity.ts
+// src/entities/strategik/hukum-section.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { Quarter, Hukum } from './hukum.entity';
 
-@Entity('sections_hukum')
+@Entity('sections_hukum_holding')
 @Index(
   'IDX_HUKUM_SECTION_PERIOD_UNIQUE',
   ['year', 'quarter', 'no', 'parameter'],
@@ -20,7 +20,6 @@ export class HukumSection {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // TAMBAHKAN INI - Section HARUS punya periode
   @Column({ type: 'int' })
   year: number;
 
@@ -28,7 +27,7 @@ export class HukumSection {
   quarter: Quarter;
 
   @Column({ type: 'varchar', length: 50 })
-  no: string; // Contoh: "6.1"
+  no: string;
 
   @Column({
     name: 'bobot_section',
@@ -40,7 +39,7 @@ export class HukumSection {
   bobotSection: number;
 
   @Column({ type: 'varchar', length: 500 })
-  parameter: string; // Nama section
+  parameter: string;
 
   @Column({ type: 'text', nullable: true })
   description: string | null;
@@ -71,6 +70,22 @@ export class HukumSection {
     default: false,
   })
   isDeleted: boolean;
+
+  @Column({
+    name: 'created_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  createdBy: string | null;
+
+  @Column({
+    name: 'updated_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  updatedBy: string | null;
 
   @OneToMany(() => Hukum, (hukum) => hukum.section)
   hukumIndicators: Hukum[];

@@ -1,3 +1,4 @@
+// kepatuhan-kpmr.dto.ts
 import {
   IsInt,
   Min,
@@ -35,57 +36,59 @@ export enum RatingEnum {
   UNSATISFACTORY = 'Unsatisfactory',
 }
 
-// ==================== HELPER TRANSFORMERS - PERBAIKAN ====================
+// ==================== HELPER TRANSFORMERS ====================
 const transformNumber = ({ value }) => {
   if (value === null || value === undefined || value === '') {
     return undefined;
   }
-
   if (value === 'undefined' || value === 'null') {
     return undefined;
   }
-
   if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
     return value;
   }
-
   const num = Number(value);
-
   if (isNaN(num) || !isFinite(num)) {
     return undefined;
   }
-
   return num;
 };
 
 const transformQuarter = ({ value }) => {
   if (!value && value !== 0) return undefined;
-
   if (typeof value === 'string') {
     const upper = value.trim().toUpperCase();
     if (['Q1', 'Q2', 'Q3', 'Q4'].includes(upper)) {
       return upper;
     }
   }
-
   const num = Number(value);
   if (!isNaN(num) && num >= 1 && num <= 4) {
     return `Q${num}`;
   }
-
   if (typeof value === 'string') {
     const parsed = parseInt(value, 10);
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 4) {
       return `Q${parsed}`;
     }
   }
-
   return undefined;
 };
 
 const transformIdToString = ({ value }) => {
-  if (value === null || value === undefined) return undefined;
-  return value.toString();
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value.toString();
+  }
+  if (typeof value === 'object' && value !== null && value.id) {
+    return value.id.toString();
+  }
+  return undefined;
 };
 
 // ==================== SUBCLASSES ====================

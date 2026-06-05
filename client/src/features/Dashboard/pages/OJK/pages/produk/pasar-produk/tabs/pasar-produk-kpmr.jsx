@@ -1,3 +1,4 @@
+// src/ojk/pasar-produk/pasar-produk-kpmr/pasar-produk-kpmr.jsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useHeaderStore } from '../../../../store/header';
 import { Input } from '@/components/ui/input';
@@ -10,9 +11,9 @@ import { normalizeKpmrRows } from '../utils/normalize/normalize-kpmr-rows';
 import { useDropdownPortal } from '../components/usedropdownportal';
 import PopUpDelete from '../components/popup-delete';
 import { useToast } from '../components/use-toast';
-import useKpmrPasar from '../hook/kpmr/pasar-produk-kpmr.hook';
-import { parseValueFromTransform } from 'framer-motion';
-
+import useKpmrPasarProduk from '../hook/kpmr/pasar-produk-kpmr.hook';
+import { useAuditLog } from '../../../../../audit-log/hooks/audit-log.hooks';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 // ==================== HELPER FUNCTION ====================
 const formatQuarter = (quarter) => {
   if (!quarter && quarter !== 0) return 'Q1';
@@ -36,6 +37,25 @@ IndicatorItem.displayName = 'IndicatorItem';
 
 function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, setActivePertanyaanIndex, activeQuarter, loading = false, editModePertanyaan, setEditModePertanyaan, onRefreshData, aspekData }) {
   const { toast } = useToast();
+  const { logCreate, logUpdate, logDelete } = useAuditLog();
+  const { authUser } = useAuth();
+
+  const getCurrentUser = useCallback(() => {
+    if (authUser && authUser.user_id) {
+      return { id: authUser.user_id, name: authUser.userID || authUser.username || 'Unknown', role: authUser.role || 'User' };
+    }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) {
+        return { id: storedUser.user_id, name: storedUser.userID || storedUser.username || 'Unknown', role: storedUser.role || 'User' };
+      }
+    } catch (e) {
+      console.warn('Cannot parse user from localStorage:', e);
+    }
+    return { id: null, name: 'System', role: 'System' };
+  }, [authUser]);
+
+  const currentUser = getCurrentUser();
   const [openPertanyaanList, setOpenPertanyaanList] = useState(false);
   const [originalPertanyaan, setOriginalPertanyaan] = useState(null);
   const [draftPertanyaan, setDraftPertanyaan] = useState(null);
@@ -51,7 +71,7 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
     pertanyaanId: null,
   });
 
-  const { addPertanyaan, updatePertanyaan, deletePertanyaan, updateSkor, saving, refreshKpmrData } = useKpmrPasar();
+  const { addPertanyaan, updatePertanyaan, deletePertanyaan, updateSkor, saving, refreshKpmrData } = useKpmrPasarProduk();
 
   const formattedQuarter = useMemo(() => formatQuarter(activeQuarter), [activeQuarter]);
   const quarterKey = formattedQuarter;
@@ -118,7 +138,7 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
         setDraftPertanyaan(createEmptyPertanyaan());
       }
     }
-  }, [hasPertanyaan, activePertanyaanIndex]); // ✅ HAPUS draftPertanyaan dari dependency
+  }, [hasPertanyaan, activePertanyaanIndex]);
 
   function createEmptyPertanyaan() {
     return {
@@ -139,13 +159,10 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
 
   const updateLocalPertanyaan = useCallback(
     (updatedPertanyaan) => {
-      // Update langsung di state lokal tanpa refresh dari backend
       if (aspekData && aspekData.pertanyaanList) {
         const updatedList = aspekData.pertanyaanList.map((p) => (p.id === updatedPertanyaan.id ? updatedPertanyaan : p));
 
-        // Update parent state melalui callback
         if (typeof onRefreshData === 'function') {
-          // Kirim data yang sudah di-update
           onRefreshData({
             ...aspekData,
             pertanyaanList: updatedList,
@@ -205,11 +222,21 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
           onRefreshData(refreshedRows);
         }
         toast({ title: 'Berhasil', description: 'Pertanyaan berhasil diperbarui' });
+        await logUpdate('PASAR_OJK', `Update Field "${path}" Pertanyaan ID: ${pertanyaan.id}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', aspekId, pertanyaanId: pertanyaan.id, path, value }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal mengupdate pertanyaan', variant: 'destructive' });
+        await logUpdate('PASAR_OJK', `Gagal Update Field "${path}" Pertanyaan ID: ${pertanyaan.id}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', aspekId, pertanyaanId: pertanyaan.id, path, value, error: error.message }
+        });
       }
     },
-    [aspekId, safeActivePertanyaanIndex, pertanyaanList, updatePertanyaan, refreshKpmrData, onRefreshData, toast],
+    [aspekId, safeActivePertanyaanIndex, pertanyaanList, updatePertanyaan, refreshKpmrData, onRefreshData, toast, logUpdate, currentUser],
   );
 
   const handleSkorChange = useCallback(
@@ -218,7 +245,6 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       const pertanyaan = pertanyaanList[safeActivePertanyaanIndex];
       if (pertanyaan.id?.startsWith('temp-')) return;
 
-      // ✅ VALIDASI SKOR
       const skorNum = Number(value);
       if (isNaN(skorNum) || skorNum < 1 || skorNum > 5 || !Number.isInteger(skorNum)) {
         toast({
@@ -230,10 +256,8 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       }
 
       try {
-        // ✅ KIRIM KE BACKEND
         const updatedPertanyaan = await updateSkor(pertanyaan.id, quarterKey, skorNum);
 
-        // ✅ UPDATE STATE LOKAL LANGSUNG
         if (aspekData && aspekData.pertanyaanList) {
           const updatedList = aspekData.pertanyaanList.map((p) => (p.id === updatedPertanyaan.id ? updatedPertanyaan : p));
 
@@ -246,11 +270,21 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
         }
 
         toast({ title: 'Berhasil', description: 'Skor berhasil diperbarui' });
+        await logUpdate('PASAR_OJK', `Update Skor Pertanyaan ID: ${pertanyaan.id} (${quarterKey}) menjadi: ${skorNum}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', aspekId, pertanyaanId: pertanyaan.id, quarterKey, skor: skorNum }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal mengupdate skor', variant: 'destructive' });
+        await logUpdate('PASAR_OJK', `Gagal Update Skor Pertanyaan ID: ${pertanyaan.id} (${quarterKey})`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', aspekId, pertanyaanId: pertanyaan.id, quarterKey, skor: skorNum, error: error.message }
+        });
       }
     },
-    [aspekId, safeActivePertanyaanIndex, pertanyaanList, quarterKey, updateSkor, onRefreshData, toast, aspekData],
+    [aspekId, safeActivePertanyaanIndex, pertanyaanList, quarterKey, updateSkor, onRefreshData, toast, aspekData, logUpdate, currentUser],
   );
 
   const handleDraftSkorChange = useCallback(
@@ -298,7 +332,6 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
     }
 
     try {
-      // ✅ KIRIM KE BACKEND
       const newPertanyaan = await addPertanyaan(aspekId, {
         nomor: pertanyaanToAdd.nomor || '',
         pertanyaan: pertanyaanToAdd.pertanyaan,
@@ -317,7 +350,6 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
 
       toast({ title: 'Berhasil', description: 'Pertanyaan berhasil ditambahkan' });
 
-      // ✅ UPDATE STATE LOKAL LANGSUNG
       if (aspekData && aspekData.pertanyaanList) {
         const updatedList = [...aspekData.pertanyaanList, newPertanyaan];
 
@@ -333,10 +365,20 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       setEditModePertanyaan(true);
       setOriginalPertanyaan(null);
       setDraftPertanyaan(createEmptyPertanyaan());
+      await logCreate('PASAR_OJK', `Tambah Pertanyaan Baru ke Aspek ID: ${aspekId} - Nomor: ${newPertanyaan.nomor || '-'}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', aspekId, quarterKey, pertanyaan: newPertanyaan }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal menambahkan pertanyaan', variant: 'destructive' });
+      await logCreate('PASAR_OJK', `Gagal Tambah Pertanyaan ke Aspek ID: ${aspekId}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', aspekId, quarterKey, draftPertanyaan, error: error.message }
+      });
     }
-  }, [aspekId, draftPertanyaan, pertanyaanList, quarterKey, addPertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData]);
+  }, [aspekId, draftPertanyaan, pertanyaanList, quarterKey, addPertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData, logCreate, currentUser]);
 
   const handleUpdatePertanyaan = useCallback(async () => {
     if (!aspekId || safeActivePertanyaanIndex === -1 || !draftPertanyaan) return;
@@ -348,7 +390,6 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       return;
     }
 
-    // ✅ VALIDASI SKOR
     const skorValue = draftPertanyaan.skor?.[quarterKey];
     if (skorValue !== undefined && skorValue !== null && skorValue !== '') {
       const skorNum = Number(skorValue);
@@ -362,7 +403,6 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       }
     }
 
-    // ✅ BUAT COPY DRAFT DENGAN SKOR YANG SUDAH DIVALIDASI
     const pertanyaanToUpdate = {
       ...draftPertanyaan,
       skor: {
@@ -372,14 +412,11 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
     };
 
     try {
-      // ✅ KIRIM KE BACKEND
       const updatedPertanyaan = await updatePertanyaan(pertanyaan.id, pertanyaanToUpdate);
 
-      // ✅ UPDATE STATE LOKAL LANGSUNG (tanpa refresh dari backend)
       if (aspekData && aspekData.pertanyaanList) {
         const updatedList = aspekData.pertanyaanList.map((p) => (p.id === updatedPertanyaan.id ? updatedPertanyaan : p));
 
-        // Update parent state
         if (typeof onRefreshData === 'function') {
           onRefreshData({
             ...aspekData,
@@ -393,10 +430,20 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       setEditModePertanyaan(false);
       setOriginalPertanyaan(null);
       setDraftPertanyaan(null);
+      await logUpdate('PASAR_OJK', `Update Pertanyaan ID: ${pertanyaan.id} - Nomor: ${updatedPertanyaan.nomor || '-'}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', aspekId, quarterKey, pertanyaanId: pertanyaan.id, updatedPertanyaan }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal mengupdate pertanyaan', variant: 'destructive' });
+      await logUpdate('PASAR_OJK', `Gagal Update Pertanyaan ID: ${pertanyaan.id}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', aspekId, quarterKey, pertanyaanId: pertanyaan.id, draftPertanyaan, error: error.message }
+      });
     }
-  }, [aspekId, safeActivePertanyaanIndex, draftPertanyaan, pertanyaanList, quarterKey, updatePertanyaan, onRefreshData, toast, setEditModePertanyaan, aspekData]);
+  }, [aspekId, safeActivePertanyaanIndex, draftPertanyaan, pertanyaanList, quarterKey, updatePertanyaan, onRefreshData, toast, setEditModePertanyaan, aspekData, logUpdate, currentUser]);
 
   const handleCancelEditPertanyaan = useCallback(() => {
     const confirmed = window.confirm('Batalkan perubahan? Semua perubahan yang belum disimpan akan hilang.');
@@ -442,10 +489,20 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       setEditModePertanyaan(false);
       setOriginalPertanyaan(null);
       setDraftPertanyaan(null);
+      await logCreate('PASAR_OJK', `Salin Pertanyaan ID: ${currentPertanyaan.id} ke Aspek ID: ${aspekId}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', aspekId, copiedFrom: currentPertanyaan.id }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal menyalin pertanyaan', variant: 'destructive' });
+      await logCreate('PASAR_OJK', `Gagal Salin Pertanyaan ID: ${currentPertanyaan.id}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', aspekId, copiedFrom: currentPertanyaan.id, error: error.message }
+      });
     }
-  }, [aspekId, safeActivePertanyaanIndex, currentPertanyaan, pertanyaanList, addPertanyaan, refreshKpmrData, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan]);
+  }, [aspekId, safeActivePertanyaanIndex, currentPertanyaan, pertanyaanList, addPertanyaan, refreshKpmrData, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, logCreate, currentUser]);
 
   const handleOpenPertanyaanDeleteDialog = useCallback(() => {
     if (!aspekId || safeActivePertanyaanIndex === -1 || !currentPertanyaan) return;
@@ -479,11 +536,9 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       }
 
       try {
-        // ✅ KIRIM KE BACKEND
         await deletePertanyaan(pertanyaanId);
         toast({ title: 'Berhasil', description: 'Pertanyaan berhasil dihapus' });
 
-        // ✅ UPDATE STATE LOKAL LANGSUNG
         if (aspekData && aspekData.pertanyaanList) {
           const updatedList = aspekData.pertanyaanList.filter((p) => p.id !== pertanyaanId);
 
@@ -502,14 +557,24 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
           setEditModePertanyaan(true);
           setDraftPertanyaan(createEmptyPertanyaan());
         }
+        await logDelete('PASAR_OJK', `Hapus Pertanyaan ID: ${pertanyaanId}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', aspekId, pertanyaanId }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal menghapus pertanyaan', variant: 'destructive' });
+        await logDelete('PASAR_OJK', `Gagal Hapus Pertanyaan ID: ${pertanyaanId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', aspekId, pertanyaanId, error: error.message }
+        });
       }
     }
 
     setItemToDelete(null);
     setDeleteContext({ type: '', aspekId: null, pertanyaanId: null });
-  }, [itemToDelete, deleteContext, safeActivePertanyaanIndex, deletePertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData]);
+  }, [itemToDelete, deleteContext, safeActivePertanyaanIndex, deletePertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData, logDelete, currentUser]);
 
   const handleClearPertanyaanSelection = useCallback(() => {
     setActivePertanyaanIndex(-1);
@@ -660,7 +725,7 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
                   {hasPertanyaan &&
                     pertanyaanList.map((pertanyaan, idx) => (
                       <button
-                        key={`pertanyaan-${pertanyaan.id || `temp-${idx}`}`} // ✅ PERBAIKAN KEY
+                        key={`pertanyaan-${pertanyaan.id || `temp-${idx}`}`}
                         onClick={() => handleSelectPertanyaan(idx)}
                         className={`w-full text-left px-3 py-2 hover:bg-slate-50 ${idx === safeActivePertanyaanIndex ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'}`}
                       >
@@ -780,6 +845,25 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
 
 function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, onCreateKpmr }) {
   const { toast } = useToast();
+  const { logCreate, logUpdate, logDelete } = useAuditLog();
+  const { authUser } = useAuth();
+
+  const getCurrentUser = useCallback(() => {
+    if (authUser && authUser.user_id) {
+      return { id: authUser.user_id, name: authUser.userID || authUser.username || 'Unknown', role: authUser.role || 'User' };
+    }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) {
+        return { id: storedUser.user_id, name: storedUser.userID || storedUser.username || 'Unknown', role: storedUser.role || 'User' };
+      }
+    } catch (e) {
+      console.warn('Cannot parse user from localStorage:', e);
+    }
+    return { id: null, name: 'System', role: 'System' };
+  }, [authUser]);
+
+  const currentUser = getCurrentUser();
   const [activeAspekIndex, setActiveAspekIndex] = useState(-1);
   const [activePertanyaanIndex, setActivePertanyaanIndex] = useState(-1);
   const [editModeAspek, setEditModeAspek] = useState(false);
@@ -802,7 +886,7 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
     pertanyaanId: null,
   });
 
-  const { addAspek, updateAspek, deleteAspek, saving, refreshKpmrData } = useKpmrPasar();
+  const { addAspek, updateAspek, deleteAspek, saving, refreshKpmrData } = useKpmrPasarProduk();
 
   const formattedQuarter = useMemo(() => formatQuarter(activeQuarter), [activeQuarter]);
 
@@ -960,15 +1044,26 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
         setOriginalAspek(null);
         setDraftAspek({ nomor: '', judul: '', bobot: '' });
 
+        await logCreate('PASAR_OJK', `Tambah Aspek Baru - Nomor: ${newAspek.nomor || '-'}, Judul: "${newAspek.judul}" (Bobot: ${newAspek.bobot}%)`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', targetKpmrId, newAspek }
+        });
+
         return true;
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal menambah aspek', variant: 'destructive' });
+        await logCreate('PASAR_OJK', `Gagal Tambah Aspek Baru ke KPMR ID: ${targetKpmrId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', targetKpmrId, draftAspek, error: error.message }
+        });
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [draftAspek, isAspekIncomplete, rows, addAspek, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModePertanyaan],
+    [draftAspek, isAspekIncomplete, rows, addAspek, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModePertanyaan, logCreate, currentUser],
   );
 
   // ========== HANDLE ADD NEW ASPEK - DENGAN DUKUNGAN CREATE KPMR ==========
@@ -1051,12 +1146,22 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
       setEditModeAspek(false);
       setOriginalAspek(null);
       setDraftAspek({ nomor: '', judul: '', bobot: '' });
+      await logUpdate('PASAR_OJK', `Update Aspek ID: ${safeActiveAspek.id} - Nomor: ${updatedAspek.nomor || '-'}, Judul: "${updatedAspek.judul}" (Bobot: ${updatedAspek.bobot}%)`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', aspekId: safeActiveAspek.id, updatedAspek }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal mengupdate aspek', variant: 'destructive' });
+      await logUpdate('PASAR_OJK', `Gagal Update Aspek ID: ${safeActiveAspek.id}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', aspekId: safeActiveAspek.id, draftAspek, error: error.message }
+      });
     } finally {
       setLoading(false);
     }
-  }, [safeActiveAspekIndex, safeActiveAspek, draftAspek, isAspekIncomplete, rows, updateAspek, onRefreshData, toast, setRows, setEditModeAspek]);
+  }, [safeActiveAspekIndex, safeActiveAspek, draftAspek, isAspekIncomplete, rows, updateAspek, onRefreshData, toast, setRows, setEditModeAspek, logUpdate, currentUser]);
 
   const handleEditAspek = useCallback(() => {
     if (safeActiveAspekIndex === -1) return;
@@ -1122,12 +1227,22 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
       setEditModeAspek(false);
       setOriginalAspek(null);
       setDraftAspek({ nomor: '', judul: '', bobot: '' });
+      await logCreate('PASAR_OJK', `Salin Aspek ID: ${source.id} ke KPMR ID: ${kpmrId}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', kpmrId, copiedFrom: source.id }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal menyalin aspek', variant: 'destructive' });
+      await logCreate('PASAR_OJK', `Gagal Salin Aspek ID: ${source.id}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', kpmrId, copiedFrom: source.id, error: error.message }
+      });
     } finally {
       setLoading(false);
     }
-  }, [safeActiveAspekIndex, safeActiveAspek, kpmrId, rows, addAspek, refreshKpmrData, onRefreshData, toast, setActiveAspekIndex, setActivePertanyaanIndex]);
+  }, [safeActiveAspekIndex, safeActiveAspek, kpmrId, rows, addAspek, refreshKpmrData, onRefreshData, toast, setActiveAspekIndex, setActivePertanyaanIndex, logCreate, currentUser]);
 
   const handleOpenAspekDeleteDialog = useCallback(() => {
     if (safeActiveAspekIndex === -1) return;
@@ -1184,14 +1299,24 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
         setEditModeAspek(nextIndex === -1);
         setOriginalAspek(null);
         setDraftAspek({ nomor: '', judul: '', bobot: '' });
+        await logDelete('PASAR_OJK', `Hapus Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', aspekId }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal menghapus aspek', variant: 'destructive' });
+        await logDelete('PASAR_OJK', `Gagal Hapus Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', aspekId, error: error.message }
+        });
       }
     }
 
     setItemToDelete(null);
     setDeleteContext({ type: '', aspekId: null, pertanyaanId: null });
-  }, [itemToDelete, deleteContext, safeActiveAspekIndex, rows, deleteAspek, refreshKpmrData, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModeAspek]);
+  }, [itemToDelete, deleteContext, safeActiveAspekIndex, rows, deleteAspek, refreshKpmrData, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModeAspek, logDelete, currentUser]);
 
   const handleClearAspekSelection = useCallback(() => {
     setActiveAspekIndex(-1);
@@ -1783,19 +1908,16 @@ function TableKpmr({ rows = [], activeQuarter }) {
   );
 }
 
-// const defaultCont = parseValueFromTransform.defaultContext;
-
-export default function KpmrPage({ rows, setRows, search, onRefreshData, kpmrId, onCreateKpmr }) {
+export default function PasarProdukKpmrPage({ rows, setRows, search, onRefreshData, kpmrId, onCreateKpmr }) {
   const { activeQuarter } = useHeaderStore();
-  const { refreshKpmrData } = useKpmrPasar();
+  const { refreshKpmrData } = useKpmrPasarProduk();
 
   const mountCountRef = useRef(0);
   const initialLoadTriggeredRef = useRef(false);
   const lastKpmrIdRef = useRef(kpmrId);
   const rowsRef = useRef(rows);
-  const isLoadingRef = useRef(false); // ✅ TAMBAHKAN
+  const isLoadingRef = useRef(false);
 
-  // Update ref ketika rows berubah
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -1826,7 +1948,6 @@ export default function KpmrPage({ rows, setRows, search, onRefreshData, kpmrId,
 
       if (!kpmrId) return;
 
-      // ✅ CEK: Cegah multiple refresh bersamaan
       if (isLoadingRef.current) {
         console.log('⏳ [KpmrPage] Refresh already in progress, skipping...');
         return;
@@ -1852,7 +1973,6 @@ export default function KpmrPage({ rows, setRows, search, onRefreshData, kpmrId,
     [kpmrId, refreshKpmrData, setRows, onRefreshData],
   );
 
-  // Ref untuk menyimpan fungsi handleRefreshData
   const handleRefreshDataRef = useRef(handleRefreshData);
 
   useEffect(() => {
@@ -1871,18 +1991,17 @@ export default function KpmrPage({ rows, setRows, search, onRefreshData, kpmrId,
     if (lastKpmrIdRef.current !== kpmrId) {
       console.log(`🆔 [KpmrPage] kpmrId berubah: ${lastKpmrIdRef.current} -> ${kpmrId}`);
       lastKpmrIdRef.current = kpmrId;
-      initialLoadTriggeredRef.current = false; // Reset trigger untuk ID baru
+      initialLoadTriggeredRef.current = false;
     }
   }, [kpmrId]);
 
-  // ✅ PERBAIKAN: Gunakan ref untuk cek loading
   useEffect(() => {
     if (kpmrId && rows.length === 0 && !initialLoadTriggeredRef.current && !isLoadingRef.current) {
       console.log(`🚀 [KpmrPage] INITIAL LOAD TRIGGERED untuk kpmrId: ${kpmrId}`);
       initialLoadTriggeredRef.current = true;
       handleRefreshDataRef.current();
     }
-  }, [kpmrId, rows.length]); // ✅ HAPUS handleRefreshData dari dependency
+  }, [kpmrId, rows.length]);
 
   return (
     <div className="w-full space-y-6">

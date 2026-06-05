@@ -23,35 +23,22 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { ReputasiOjkService } from './reputasi-ojk.service';
-// import {
-//   CreateReputasiOjkDto,
-//   UpdateReputasiOjkDto,
-//   CreateParameterDto,
-//   UpdateParameterDto,
-//   CreateNilaiDto,
-//   UpdateNilaiDto,
-//   ReorderParametersDto,
-//   ReorderNilaiDto,
-//   UpdateSummaryDto,
-//   ImportExportDto,
-// } from './dto/reputasi-ojk.dto';
-
+import { ReputasiService } from './reputasi-ojk.service';
 import {
-  CreateReputasiOjkDto,
-  CreateNilaiDto,
+  CreateReputasiDto,
+  UpdateReputasiDto,
   CreateParameterDto,
-  UpdateNilaiDto,
   UpdateParameterDto,
-  UpdateReputasiOjkDto,
-  UpdateSummaryDto,
-  ReorderNilaiDto,
+  CreateNilaiDto,
+  UpdateNilaiDto,
   ReorderParametersDto,
+  ReorderNilaiDto,
+  UpdateSummaryDto,
   ImportExportDto,
 } from './dto/reputasi-inherent.dto';
 
-@ApiTags('Reputasi OJK')
-@Controller('reputasi-ojk')
+@ApiTags('Reputasi')
+@Controller('reputasi')
 @UseInterceptors(ClassSerializerInterceptor)
 @UsePipes(
   new ValidationPipe({
@@ -60,13 +47,13 @@ import {
     forbidNonWhitelisted: true,
   }),
 )
-export class ReputasiOjkController {
-  constructor(private readonly reputasiService: ReputasiOjkService) {}
+export class ReputasiController {
+  constructor(private readonly reputasiService: ReputasiService) {}
 
   // === CRUD UTAMA ===
 
   @Get()
-  @ApiOperation({ summary: 'Get all Reputasi OJK data or by year/quarter' })
+  @ApiOperation({ summary: 'Get all Reputasi data or by year/quarter' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
@@ -74,23 +61,38 @@ export class ReputasiOjkController {
     @Query('year') year?: number,
     @Query('quarter') quarter?: number,
   ) {
+    // Jika ada parameter year & quarter, cari spesifik
     if (year && quarter) {
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
       const result = await this.reputasiService.findByYearQuarter(
-        year,
-        quarter,
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      // ✅ JANGAN throw error. Return response 200 dengan data null.
+      return {
+        success: true,
+        data: result || null, // null jika tidak ditemukan
+        exists: !!result, // flag untuk frontend
+        message: result
+          ? `Data reputasi ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data reputasi belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.reputasiService.getAll();
+
+    // Jika tidak ada parameter, return semua data
+    const allData = await this.reputasiService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Get active Reputasi OJK data' })
+  @ApiOperation({ summary: 'Get active Reputasi data' })
   @ApiResponse({
     status: 200,
     description: 'Active data retrieved successfully',
@@ -105,22 +107,12 @@ export class ReputasiOjkController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Reputasi OJK by ID' })
+  @ApiOperation({ summary: 'Get Reputasi by ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const activeData = await this.reputasiService.findActive();
-
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    const result = await this.reputasiService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const result = await this.reputasiService.findById(id);
     if (!result) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
@@ -128,24 +120,24 @@ export class ReputasiOjkController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new Reputasi OJK data' })
-  @ApiBody({ type: CreateReputasiOjkDto })
+  @ApiOperation({ summary: 'Create new Reputasi data' })
+  @ApiBody({ type: CreateReputasiDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(@Body() createDto: CreateReputasiOjkDto, @Request() req) {
+  async create(@Body() createDto: CreateReputasiDto, @Request() req) {
     const userId = req.user?.id || 'system';
     return this.reputasiService.create(createDto, userId);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update Reputasi OJK data' })
+  @ApiOperation({ summary: 'Update Reputasi data' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdateReputasiOjkDto })
+  @ApiBody({ type: UpdateReputasiDto })
   @ApiResponse({ status: 200, description: 'Data updated successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateReputasiOjkDto,
+    @Body() updateDto: UpdateReputasiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
@@ -183,7 +175,7 @@ export class ReputasiOjkController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete Reputasi OJK data' })
+  @ApiOperation({ summary: 'Delete Reputasi data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data deleted successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
@@ -194,7 +186,7 @@ export class ReputasiOjkController {
   // === OPERASI PARAMETER ===
 
   @Get(':id/parameters')
-  @ApiOperation({ summary: 'Get all parameters for specific Reputasi OJK' })
+  @ApiOperation({ summary: 'Get all parameters for specific Reputasi' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
     status: 200,
@@ -273,7 +265,11 @@ export class ReputasiOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.reputasiService.copyParameter(reputasiId, parameterId, userId);
+    return this.reputasiService.copyParameter(
+      reputasiId,
+      parameterId,
+      userId,
+    );
   }
 
   @Delete(':id/parameters/:parameterId')
@@ -456,6 +452,18 @@ export class ReputasiOjkController {
     return this.reputasiService.getReferences(type);
   }
 
+  // === VALIDATION ENDPOINTS ===
+
+  @Get(':id/validate')
+  @ApiOperation({ summary: 'Validate model terstruktur' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Validation completed' })
+  async validateModelTerstruktur(
+    @Param('id', ParseIntPipe) reputasiId: number,
+  ) {
+    return this.reputasiService.validateModelTerstruktur(reputasiId);
+  }
+
   // === UTILITY ENDPOINTS ===
 
   @Get('check/:year/:quarter')
@@ -474,15 +482,7 @@ export class ReputasiOjkController {
   // === HELPER METHODS ===
 
   private async getReputasiByIdOrThrow(reputasiId: number) {
-    const activeData = await this.reputasiService.findActive();
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    const reputasi = await this.reputasiService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
+    const reputasi = await this.reputasiService.findById(reputasiId);
 
     if (!reputasi) {
       throw new NotFoundException(
@@ -490,16 +490,6 @@ export class ReputasiOjkController {
       );
     }
 
-    if (reputasi.id !== reputasiId) {
-      throw new NotFoundException(
-        `Data dengan ID ${reputasiId} tidak ditemukan`,
-      );
-    }
-
     return reputasi;
-  }
-
-  private async getReputasiByIdDirect(reputasiId: number) {
-    return this.getReputasiByIdOrThrow(reputasiId);
   }
 }

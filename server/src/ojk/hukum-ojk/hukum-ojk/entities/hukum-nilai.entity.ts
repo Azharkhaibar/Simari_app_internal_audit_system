@@ -10,8 +10,10 @@ import {
 } from 'typeorm';
 import { HukumParameter } from './hukum-paramater.entity';
 
-@Entity('hukum_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('hukum_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class HukumNilai {
   @PrimaryGeneratedColumn()
   id: number;

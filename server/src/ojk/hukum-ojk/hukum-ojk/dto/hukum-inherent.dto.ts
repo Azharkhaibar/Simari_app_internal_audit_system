@@ -474,3 +474,7 @@ export class ImportExportDto {
   @Type(() => ExportParameterDto)
   parameters: ExportParameterDto[];
 }
+
+// Aliases for backward compatibility
+export { CreateHukumInherentDto as CreateHukumDto };
+export { UpdateHukumInherentDto as UpdateHukumDto };

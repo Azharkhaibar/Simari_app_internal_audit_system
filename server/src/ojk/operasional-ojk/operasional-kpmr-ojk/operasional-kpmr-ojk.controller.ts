@@ -419,7 +419,7 @@ export class KpmrOperasionalController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
-    // ✅ PANGGIL METHOD VALIDATE DENGAN ID
+
     return this.kpmrService.validateKpmrData(idNum);
   }
 

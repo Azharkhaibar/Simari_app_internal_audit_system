@@ -1,4 +1,3 @@
-// src/ojk/pasar-produk/pasar-produk-ojk/pasar-produk-ojk.controller.ts
 import {
   Controller,
   Get,
@@ -24,10 +23,10 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { PasarProdukOjkService } from './pasar-produk-ojk.service';
+import { PasarProdukService } from './pasar-produk-ojk.service';
 import {
-  CreatePasarProdukInherentDto,
-  UpdatePasarProdukInherentDto,
+  CreatePasarProdukDto,
+  UpdatePasarProdukDto,
   CreateParameterDto,
   UpdateParameterDto,
   CreateNilaiDto,
@@ -38,8 +37,8 @@ import {
   ImportExportDto,
 } from './dto/pasar-produk-inherent.dto';
 
-@ApiTags('Pasar Produk OJK')
-@Controller('pasar-produk-ojk')
+@ApiTags('Pasar Produk')
+@Controller('pasar-produk')
 @UseInterceptors(ClassSerializerInterceptor)
 @UsePipes(
   new ValidationPipe({
@@ -48,13 +47,13 @@ import {
     forbidNonWhitelisted: true,
   }),
 )
-export class PasarProdukOjkController {
-  constructor(private readonly inherentService: PasarProdukOjkService) {}
+export class PasarProdukController {
+  constructor(private readonly pasarProdukService: PasarProdukService) {}
 
   // === CRUD UTAMA ===
 
   @Get()
-  @ApiOperation({ summary: 'Get all Pasar Produk OJK data or by year/quarter' })
+  @ApiOperation({ summary: 'Get all Pasar Produk data or by year/quarter' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
@@ -62,30 +61,45 @@ export class PasarProdukOjkController {
     @Query('year') year?: number,
     @Query('quarter') quarter?: number,
   ) {
+    // Jika ada parameter year & quarter, cari spesifik
     if (year && quarter) {
-      const result = await this.inherentService.findByYearQuarter(
-        year,
-        quarter,
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
+      const result = await this.pasarProdukService.findByYearQuarter(
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      // ✅ JANGAN throw error. Return response 200 dengan data null.
+      return {
+        success: true,
+        data: result || null, // null jika tidak ditemukan
+        exists: !!result, // flag untuk frontend
+        message: result
+          ? `Data pasar produk ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data pasar produk belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.inherentService.getAll();
+
+    // Jika tidak ada parameter, return semua data
+    const allData = await this.pasarProdukService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Get active Pasar Produk OJK data' })
+  @ApiOperation({ summary: 'Get active Pasar Produk data' })
   @ApiResponse({
     status: 200,
     description: 'Active data retrieved successfully',
   })
   @ApiResponse({ status: 404, description: 'No active data found' })
   async getActive() {
-    const result = await this.inherentService.findActive();
+    const result = await this.pasarProdukService.findActive();
     if (!result) {
       throw new NotFoundException('Tidak ada data aktif ditemukan');
     }
@@ -93,24 +107,12 @@ export class PasarProdukOjkController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Pasar Produk OJK by ID' })
+  @ApiOperation({ summary: 'Get Pasar Produk by ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    // PERBAIKAN: Cari langsung berdasarkan ID dengan method baru
-    const activeData = await this.inherentService.findActive();
-
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Gunakan year dan quarter dari active data
-    const result = await this.inherentService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const result = await this.pasarProdukService.findById(id);
     if (!result) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
@@ -118,31 +120,28 @@ export class PasarProdukOjkController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new Pasar Produk OJK data' })
-  @ApiBody({ type: CreatePasarProdukInherentDto })
+  @ApiOperation({ summary: 'Create new Pasar Produk data' })
+  @ApiBody({ type: CreatePasarProdukDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(
-    @Body() createDto: CreatePasarProdukInherentDto,
-    @Request() req,
-  ) {
+  async create(@Body() createDto: CreatePasarProdukDto, @Request() req) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.create(createDto, userId);
+    return this.pasarProdukService.create(createDto, userId);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update Pasar Produk OJK data' })
+  @ApiOperation({ summary: 'Update Pasar Produk data' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdatePasarProdukInherentDto })
+  @ApiBody({ type: UpdatePasarProdukDto })
   @ApiResponse({ status: 200, description: 'Data updated successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdatePasarProdukInherentDto,
+    @Body() updateDto: UpdatePasarProdukDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.update(id, updateDto, userId);
+    return this.pasarProdukService.update(id, updateDto, userId);
   }
 
   @Put(':id/summary')
@@ -157,7 +156,7 @@ export class PasarProdukOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateSummary(id, summaryDto, userId);
+    return this.pasarProdukService.updateSummary(id, summaryDto, userId);
   }
 
   @Put(':id/status')
@@ -172,31 +171,30 @@ export class PasarProdukOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateActiveStatus(id, isActive, userId);
+    return this.pasarProdukService.updateActiveStatus(id, isActive, userId);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete Pasar Produk OJK data' })
+  @ApiOperation({ summary: 'Delete Pasar Produk data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data deleted successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.inherentService.remove(id);
+    return this.pasarProdukService.remove(id);
   }
 
   // === OPERASI PARAMETER ===
 
   @Get(':id/parameters')
-  @ApiOperation({ summary: 'Get all parameters for specific Pasar Produk OJK' })
+  @ApiOperation({ summary: 'Get all parameters for specific Pasar Produk' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
     status: 200,
     description: 'Parameters retrieved successfully',
   })
-  async getParameters(@Param('id', ParseIntPipe) inherentId: number) {
-    // PERBAIKAN: Cari inherent berdasarkan ID, bukan year/quarter
-    const inherent = await this.getInherentByIdOrThrow(inherentId);
-    return inherent.parameters || [];
+  async getParameters(@Param('id', ParseIntPipe) pasarProdukId: number) {
+    const pasarProduk = await this.getPasarProdukByIdOrThrow(pasarProdukId);
+    return pasarProduk.parameters || [];
   }
 
   @Post(':id/parameters')
@@ -206,13 +204,13 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 201, description: 'Parameter added successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async addParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Body() createParamDto: CreateParameterDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.addParameter(
-      inherentId,
+    return this.pasarProdukService.addParameter(
+      pasarProdukId,
       createParamDto,
       userId,
     );
@@ -226,14 +224,14 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 200, description: 'Parameter updated successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async updateParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Body() updateParamDto: UpdateParameterDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateParameter(
-      inherentId,
+    return this.pasarProdukService.updateParameter(
+      pasarProdukId,
       parameterId,
       updateParamDto,
       userId,
@@ -249,10 +247,10 @@ export class PasarProdukOjkController {
     description: 'Parameters reordered successfully',
   })
   async reorderParameters(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Body() reorderDto: ReorderParametersDto,
   ) {
-    return this.inherentService.reorderParameters(inherentId, reorderDto);
+    return this.pasarProdukService.reorderParameters(pasarProdukId, reorderDto);
   }
 
   @Post(':id/parameters/:parameterId/copy')
@@ -262,12 +260,16 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 201, description: 'Parameter copied successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async copyParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.copyParameter(inherentId, parameterId, userId);
+    return this.pasarProdukService.copyParameter(
+      pasarProdukId,
+      parameterId,
+      userId,
+    );
   }
 
   @Delete(':id/parameters/:parameterId')
@@ -277,13 +279,13 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 200, description: 'Parameter deleted successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async removeParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.removeParameter(
-      inherentId,
+    return this.pasarProdukService.removeParameter(
+      pasarProdukId,
       parameterId,
       userId,
     );
@@ -297,13 +299,12 @@ export class PasarProdukOjkController {
   @ApiParam({ name: 'parameterId', type: Number })
   @ApiResponse({ status: 200, description: 'Nilai retrieved successfully' })
   async getNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
   ) {
-    // PERBAIKAN: Cari inherent berdasarkan ID
-    const inherent = await this.getInherentByIdOrThrow(inherentId);
+    const pasarProduk = await this.getPasarProdukByIdOrThrow(pasarProdukId);
 
-    const parameter = inherent.parameters?.find((p) => p.id === parameterId);
+    const parameter = pasarProduk.parameters?.find((p) => p.id === parameterId);
     if (!parameter) {
       throw new NotFoundException(
         `Parameter dengan ID ${parameterId} tidak ditemukan`,
@@ -320,14 +321,14 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 201, description: 'Nilai added successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async addNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Body() createNilaiDto: CreateNilaiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.addNilai(
-      inherentId,
+    return this.pasarProdukService.addNilai(
+      pasarProdukId,
       parameterId,
       createNilaiDto,
       userId,
@@ -343,15 +344,15 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 200, description: 'Nilai updated successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async updateNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Body() updateNilaiDto: UpdateNilaiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateNilai(
-      inherentId,
+    return this.pasarProdukService.updateNilai(
+      pasarProdukId,
       parameterId,
       nilaiId,
       updateNilaiDto,
@@ -366,11 +367,11 @@ export class PasarProdukOjkController {
   @ApiBody({ type: ReorderNilaiDto })
   @ApiResponse({ status: 200, description: 'Nilai reordered successfully' })
   async reorderNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Body() reorderDto: ReorderNilaiDto,
   ) {
-    return this.inherentService.reorderNilai(parameterId, reorderDto);
+    return this.pasarProdukService.reorderNilai(parameterId, reorderDto);
   }
 
   @Post(':id/parameters/:parameterId/nilai/:nilaiId/copy')
@@ -381,14 +382,14 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 201, description: 'Nilai copied successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async copyNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.copyNilai(
-      inherentId,
+    return this.pasarProdukService.copyNilai(
+      pasarProdukId,
       parameterId,
       nilaiId,
       userId,
@@ -403,14 +404,14 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 200, description: 'Nilai deleted successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async removeNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) pasarProdukId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.removeNilai(
-      inherentId,
+    return this.pasarProdukService.removeNilai(
+      pasarProdukId,
       parameterId,
       nilaiId,
       userId,
@@ -424,8 +425,8 @@ export class PasarProdukOjkController {
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Export successful' })
   @ApiResponse({ status: 404, description: 'Data not found' })
-  async exportToExcel(@Param('id', ParseIntPipe) inherentId: number) {
-    return this.inherentService.exportToExcel(inherentId);
+  async exportToExcel(@Param('id', ParseIntPipe) pasarProdukId: number) {
+    return this.pasarProdukService.exportToExcel(pasarProdukId);
   }
 
   @Post('import')
@@ -435,7 +436,7 @@ export class PasarProdukOjkController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   async importFromExcel(@Body() importData: ImportExportDto, @Request() req) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.importFromExcel(importData, userId);
+    return this.pasarProdukService.importFromExcel(importData, userId);
   }
 
   // === REFERENCE DATA ===
@@ -448,7 +449,19 @@ export class PasarProdukOjkController {
     description: 'References retrieved successfully',
   })
   async getReferences(@Query('type') type?: string) {
-    return this.inherentService.getReferences(type);
+    return this.pasarProdukService.getReferences(type);
+  }
+
+  // === VALIDATION ENDPOINTS ===
+
+  @Get(':id/validate')
+  @ApiOperation({ summary: 'Validate model terstruktur' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Validation completed' })
+  async validateModelTerstruktur(
+    @Param('id', ParseIntPipe) pasarProdukId: number,
+  ) {
+    return this.pasarProdukService.validateModelTerstruktur(pasarProdukId);
   }
 
   // === UTILITY ENDPOINTS ===
@@ -462,58 +475,24 @@ export class PasarProdukOjkController {
     @Param('year', ParseIntPipe) year: number,
     @Param('quarter', ParseIntPipe) quarter: number,
   ) {
-    const exists = await this.inherentService.findByYearQuarter(year, quarter);
+    const exists = await this.pasarProdukService.findByYearQuarter(
+      year,
+      quarter,
+    );
     return { exists: !!exists, data: exists };
   }
 
   // === HELPER METHODS ===
 
-  /**
-   * Helper method untuk mendapatkan inherent by ID
-   * Karena entity relasional, kita perlu mencari berdasarkan year/quarter dari inherent aktif
-   */
-  private async getInherentByIdOrThrow(inherentId: number) {
-    // Cari berdasarkan ID langsung (jika service punya method findById)
-    // Atau gunakan active data
+  private async getPasarProdukByIdOrThrow(pasarProdukId: number) {
+    const pasarProduk = await this.pasarProdukService.findById(pasarProdukId);
 
-    const activeData = await this.inherentService.findActive();
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Cari data berdasarkan year/quarter dari active data
-    const inherent = await this.inherentService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
-    if (!inherent) {
+    if (!pasarProduk) {
       throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
+        `Data dengan ID ${pasarProdukId} tidak ditemukan`,
       );
     }
 
-    // Validasi bahwa ID yang diminta sesuai dengan ID yang ditemukan
-    if (inherent.id !== inherentId) {
-      throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
-      );
-    }
-
-    return inherent;
-  }
-
-  /**
-   * Opsional: Method alternatif jika service punya findById
-   */
-  private async getInherentByIdDirect(inherentId: number) {
-    // Jika service memiliki method findById, gunakan ini
-    // Tapi service kita saat ini tidak punya, jadi perlu ditambahkan
-
-    // Contoh jika service punya method findById:
-    // return await this.inherentService.findById(inherentId);
-
-    // Untuk sekarang, kita gunakan workaround dengan active data
-    return this.getInherentByIdOrThrow(inherentId);
+    return pasarProduk;
   }
 }

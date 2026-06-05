@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -13,11 +13,13 @@ import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { Auth } from './entities/auth.entity';
 import { User } from 'src/users/entities/user.entity';
 import { UsersModule } from 'src/users/users.module';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [
     ConfigModule,
     UsersModule,
+    forwardRef(() => NotificationModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
 
     JwtModule.registerAsync({
@@ -41,3 +43,4 @@ import { UsersModule } from 'src/users/users.module';
   exports: [JwtAuthGuard, PassportModule, JwtModule],
 })
 export class AuthModule {}
+

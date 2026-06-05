@@ -61,19 +61,34 @@ export class OperasionalController {
     @Query('year') year?: number,
     @Query('quarter') quarter?: number,
   ) {
+    // Jika ada parameter year & quarter, cari spesifik
     if (year && quarter) {
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
       const result = await this.operasionalService.findByYearQuarter(
-        year,
-        quarter,
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      // ✅ JANGAN throw error. Return response 200 dengan data null.
+      return {
+        success: true,
+        data: result || null, // null jika tidak ditemukan
+        exists: !!result, // flag untuk frontend
+        message: result
+          ? `Data operasional ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data operasional belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.operasionalService.getAll();
+
+    // Jika tidak ada parameter, return semua data
+    const allData = await this.operasionalService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
@@ -109,10 +124,7 @@ export class OperasionalController {
   @ApiBody({ type: CreateOperasionalDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(
-    @Body() createDto: CreateOperasionalDto,
-    @Request() req,
-  ) {
+  async create(@Body() createDto: CreateOperasionalDto, @Request() req) {
     const userId = req.user?.id || 'system';
     return this.operasionalService.create(createDto, userId);
   }
@@ -253,7 +265,11 @@ export class OperasionalController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.operasionalService.copyParameter(operasionalId, parameterId, userId);
+    return this.operasionalService.copyParameter(
+      operasionalId,
+      parameterId,
+      userId,
+    );
   }
 
   @Delete(':id/parameters/:parameterId')
@@ -442,7 +458,9 @@ export class OperasionalController {
   @ApiOperation({ summary: 'Validate model terstruktur' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Validation completed' })
-  async validateModelTerstruktur(@Param('id', ParseIntPipe) operasionalId: number) {
+  async validateModelTerstruktur(
+    @Param('id', ParseIntPipe) operasionalId: number,
+  ) {
     return this.operasionalService.validateModelTerstruktur(operasionalId);
   }
 
@@ -457,7 +475,10 @@ export class OperasionalController {
     @Param('year', ParseIntPipe) year: number,
     @Param('quarter', ParseIntPipe) quarter: number,
   ) {
-    const exists = await this.operasionalService.findByYearQuarter(year, quarter);
+    const exists = await this.operasionalService.findByYearQuarter(
+      year,
+      quarter,
+    );
     return { exists: !!exists, data: exists };
   }
 

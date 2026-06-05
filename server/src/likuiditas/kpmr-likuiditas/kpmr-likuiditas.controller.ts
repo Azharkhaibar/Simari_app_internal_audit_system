@@ -1,4 +1,3 @@
-// kpmr-likuiditas.controller.ts
 import {
   Controller,
   Get,
@@ -11,7 +10,6 @@ import {
   HttpCode,
   HttpStatus,
   ParseIntPipe,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { KPMRLikuiditasService } from './kpmr-likuiditas.service';
@@ -29,9 +27,10 @@ import {
 @ApiTags('KPMR Likuiditas')
 @Controller('kpmr-likuiditas')
 export class KPMRLikuiditasController {
-  constructor(private readonly kpmrLikuiditasService: KPMRLikuiditasService) {}
+  constructor(
+    private readonly kpmrLikuiditasService: KPMRLikuiditasService,
+  ) {}
 
-  // ========== ASPECT ENDPOINTS ==========
   @Post('aspects')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new KPMR Likuiditas aspect' })
@@ -42,9 +41,8 @@ export class KPMRLikuiditasController {
   @Get('aspects')
   @ApiOperation({ summary: 'Get all KPMR Likuiditas aspects' })
   @ApiQuery({ name: 'year', required: false })
-  async getAllAspects(@Query('year') year?: string) {
-    const yearNum = year ? parseInt(year, 10) : undefined;
-    return await this.kpmrLikuiditasService.findAllAspects(yearNum);
+  async getAllAspects(@Query('year', ParseIntPipe) year?: number) {
+    return await this.kpmrLikuiditasService.findAllAspects(year);
   }
 
   @Get('aspects/:id')
@@ -69,7 +67,6 @@ export class KPMRLikuiditasController {
     return await this.kpmrLikuiditasService.deleteAspect(id);
   }
 
-  // ========== QUESTION ENDPOINTS ==========
   @Post('questions')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new KPMR Likuiditas question' })
@@ -80,9 +77,8 @@ export class KPMRLikuiditasController {
   @Get('questions')
   @ApiOperation({ summary: 'Get all KPMR Likuiditas questions' })
   @ApiQuery({ name: 'year', required: false })
-  async getAllQuestions(@Query('year') year?: string) {
-    const yearNum = year ? parseInt(year, 10) : undefined;
-    return await this.kpmrLikuiditasService.findAllQuestions(yearNum);
+  async getAllQuestions(@Query('year', ParseIntPipe) year?: number) {
+    return await this.kpmrLikuiditasService.findAllQuestions(year);
   }
 
   @Get('questions/aspect/:aspekNo')
@@ -90,12 +86,11 @@ export class KPMRLikuiditasController {
   @ApiQuery({ name: 'year', required: false })
   async getQuestionsByAspect(
     @Param('aspekNo') aspekNo: string,
-    @Query('year') year?: string,
+    @Query('year', ParseIntPipe) year?: number,
   ) {
-    const yearNum = year ? parseInt(year, 10) : undefined;
     return await this.kpmrLikuiditasService.findQuestionsByAspect(
       aspekNo,
-      yearNum,
+      year,
     );
   }
 
@@ -121,14 +116,15 @@ export class KPMRLikuiditasController {
     return await this.kpmrLikuiditasService.deleteQuestion(id);
   }
 
-  // ========== DEFINITION ENDPOINTS ==========
   @Post('definitions')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create or update KPMR Likuiditas definition' })
   async createOrUpdateDefinition(
     @Body() createDto: CreateKPMRLikuiditasDefinitionDto,
   ) {
-    return await this.kpmrLikuiditasService.createOrUpdateDefinition(createDto);
+    return await this.kpmrLikuiditasService.createOrUpdateDefinition(
+      createDto,
+    );
   }
 
   @Get('definitions')
@@ -173,7 +169,6 @@ export class KPMRLikuiditasController {
     return result;
   }
 
-  // ========== SCORE ENDPOINTS ==========
   @Post('scores')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create or update KPMR Likuiditas score' })
@@ -192,17 +187,10 @@ export class KPMRLikuiditasController {
   @ApiQuery({ name: 'year', required: true })
   @ApiQuery({ name: 'quarter', required: false })
   async getScoresByPeriod(
-    @Query('year') year: string,
+    @Query('year', ParseIntPipe) year: number,
     @Query('quarter') quarter?: string,
   ) {
-    const yearNum = parseInt(year, 10);
-    if (isNaN(yearNum)) {
-      throw new BadRequestException('Year harus berupa angka yang valid');
-    }
-    return await this.kpmrLikuiditasService.findScoresByPeriod(
-      yearNum,
-      quarter,
-    );
+    return await this.kpmrLikuiditasService.findScoresByPeriod(year, quarter);
   }
 
   @Get('scores/definition/:definitionId')
@@ -250,7 +238,6 @@ export class KPMRLikuiditasController {
     );
   }
 
-  // ========== COMPLEX QUERIES ==========
   @Get('full-data/:year')
   @ApiOperation({ summary: 'Get complete KPMR Likuiditas data with grouping' })
   async getFullData(@Param('year', ParseIntPipe) year: number) {
@@ -263,12 +250,11 @@ export class KPMRLikuiditasController {
   @ApiQuery({ name: 'query', required: false })
   @ApiQuery({ name: 'aspekNo', required: false })
   async searchKPMR(
-    @Query('year') year?: string,
+    @Query('year', ParseIntPipe) year?: number,
     @Query('query') query?: string,
     @Query('aspekNo') aspekNo?: string,
   ) {
-    const yearNum = year ? parseInt(year, 10) : undefined;
-    return await this.kpmrLikuiditasService.searchKPMR(yearNum, query, aspekNo);
+    return await this.kpmrLikuiditasService.searchKPMR(year, query, aspekNo);
   }
 
   @Get('years')

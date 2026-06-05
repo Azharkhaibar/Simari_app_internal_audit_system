@@ -1,4 +1,4 @@
-// services/konsentrasi-produk-api.service.ts
+// services/konsentrasi.api.service.ts
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:5530/api/v1';

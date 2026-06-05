@@ -1,3 +1,4 @@
+// reputasi-kpmr-ojk.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +11,7 @@ import {
 import { KpmrAspekReputasi } from './reputasi-kpmr-aspek.entity';
 
 @Entity('kpmr_reputasi_ojk')
-@Index(['year', 'quarter'], { unique: true })
+@Index(['year', 'quarter'])  // ✅ HAPUS { unique: true }
 @Index(['isActive', 'year', 'quarter'])
 @Index(['createdAt'])
 export class KpmrReputasiOjk {
@@ -26,7 +27,7 @@ export class KpmrReputasiOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => KpmrAspekReputasi, (aspek) => aspek.kpmrReputasi, {
+  @OneToMany(() => KpmrAspekReputasi, (aspek) => aspek.kpmrOjk, {
     cascade: true,
     eager: false,
   })

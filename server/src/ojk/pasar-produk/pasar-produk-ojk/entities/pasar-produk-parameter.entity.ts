@@ -1,5 +1,3 @@
-// pasar-produk-parameter.entity.ts
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -11,13 +9,15 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { PasarProdukOjk } from './pasar-produk-ojk.entity';
-import { PasarNilai } from './pasar-produk-nilai.entity';
+import { PasarProduk } from './pasar-produk-ojk.entity';
+import { PasarProdukNilai } from './pasar-produk-nilai.entity';
 
-@Entity('pasar_parameters')
-@Index(['pasarProdukOjkId', 'nomor'], { unique: false })
-export class PasarParameter {
-  @PrimaryGeneratedColumn() 
+@Entity('pasar_produk_parameters_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['pasarProdukId', 'nomor'])
+@Index(['pasarProdukId', 'orderIndex'])
+export class PasarProdukParameter {
+  @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ nullable: true })
@@ -37,21 +37,19 @@ export class PasarParameter {
     underlying?: string[];
   };
 
-  // Foreign key ke PasarProdukOjk
   @Column({ name: 'pasar_produk_ojk_id' })
-  pasarProdukOjkId: number;
+  pasarProdukId: number;
 
-  @ManyToOne(() => PasarProdukOjk, (pasar) => pasar.parameters, {
+  @ManyToOne(() => PasarProduk, (pasarProduk) => pasarProduk.parameters, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'pasar_produk_ojk_id' })
-  pasarProdukOjk: PasarProdukOjk;
+  pasarProduk: PasarProduk;
 
-  // Relasi ke nilai
-  @OneToMany(() => PasarNilai, (nilai) => nilai.parameter, {
+  @OneToMany(() => PasarProdukNilai, (nilai) => nilai.parameter, {
     cascade: true,
   })
-  nilaiList?: PasarNilai[];
+  nilaiList?: PasarProdukNilai[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -34,29 +34,22 @@ export const useRas = () => {
   }, []);
 
   // Fetch all data dengan filter
-  const fetchData = useCallback(
-    async (filter?: FilterRasDto) => {
-      if (!isConnected) {
-        await testConnection();
-      }
+  const fetchData = useCallback(async (filter?: FilterRasDto) => {
+    setLoading(true);
+    setError(null);
 
-      setLoading(true);
-      setError(null);
-
-      try {
-        const result = await rasApi.getAll(filter);
-        setData(result);
-        return result;
-      } catch (err: any) {
-        const message = err.message || 'Gagal mengambil data RAS';
-        setError(message);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [isConnected, testConnection],
-  );
+    try {
+      const result = await rasApi.getAll(filter);
+      setData(result);
+      return result;
+    } catch (err: any) {
+      const message = err.message || 'Gagal mengambil data RAS';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Fetch by year
   const fetchByYear = useCallback(async (year: number) => {
@@ -64,11 +57,9 @@ export const useRas = () => {
     setError(null);
 
     try {
-      const result = await rasApi.getByYear(year);
-
-      const response = await rasApi.getAll();
-      setData(response);
-      return response.filter((item) => item.year === year);
+      const result = await rasApi.getByYear(year); // ✅ Langsung pakai result
+      setData(result);
+      return result;
     } catch (err: any) {
       const message = err.message || `Gagal mengambil data tahun ${year}`;
       setError(message);
@@ -196,7 +187,7 @@ export const useRas = () => {
       setError(message);
       throw err;
     } finally {
-      setLoading(false);z
+      setLoading(false);
     }
   }, []);
 

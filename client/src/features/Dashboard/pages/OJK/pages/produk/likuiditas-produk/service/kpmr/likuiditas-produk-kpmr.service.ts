@@ -1,5 +1,7 @@
 import api_likuiditas_produk from '../likuiditas_produk_api.service';
 
+// services/kpmr/likuiditas-produk-kpmr.service.ts
+
 // ========== DTO Interfaces ==========
 export interface KpmrSkorDto {
   Q1?: number;
@@ -128,7 +130,7 @@ export interface FrontendPertanyaanResponse {
 
 // ========== SERVICE CLASS ==========
 class KpmrLikuiditasApiService {
-  private readonly BASE_PATH = '/kpmr-likuiditas';
+  private readonly BASE_PATH = '/kpmr-likuiditas-produk';
   private readonly VALID_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'] as const;
   private readonly MIN_YEAR = 2000;
   private readonly MAX_YEAR = 2100;

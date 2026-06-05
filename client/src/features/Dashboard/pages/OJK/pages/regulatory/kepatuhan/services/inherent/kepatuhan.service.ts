@@ -2,17 +2,17 @@
 import api_kepatuhan_produk from '../kepatuhan-api.service';
 
 // =============================================
-// TYPES UNTUK INHERENT RISK (BUKAN KPMR)
+// TYPES BERDASARKAN BACKEND ENTITY
 // =============================================
 
-export interface KepatuhanOjkEntity {
+export interface KepatuhanProdukOjkEntity {
   id: number;
   year: number;
   quarter: number;
   isActive: boolean;
-  parameters?: ParameterEntity[]; // ✅ BUKAN aspekList
+  parameters?: KepatuhanParameterEntity[];
   summary?: {
-    totalWeighted?: number; // ✅ BUKAN totalScore
+    totalWeighted?: number;
     summaryBg?: string;
     computedAt?: Date;
   };
@@ -27,8 +27,7 @@ export interface KepatuhanOjkEntity {
   notes?: string;
 }
 
-export interface ParameterEntity {
-  // ✅ BUKAN AspekEntity
+export interface KepatuhanParameterEntity {
   id: number;
   nomor?: string;
   judul: string;
@@ -39,18 +38,17 @@ export interface ParameterEntity {
     jenis?: string;
     underlying?: string[];
   };
-  nilaiList?: NilaiEntity[]; // ✅ BUKAN pertanyaanList
+  nilaiList?: KepatuhanNilaiEntity[];
   orderIndex: number;
-  kepatuhanId: number; // ✅ BUKAN kpmrKepatuhanId
+  kepatuhanProdukOjkId: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface NilaiEntity {
-  // ✅ BUKAN PertanyaanEntity
+export interface KepatuhanNilaiEntity {
   id: number;
   nomor?: string;
-  judul?: {
+  judul: {
     type?: string;
     text?: string;
     value?: string | number | null;
@@ -78,24 +76,18 @@ export interface NilaiEntity {
 }
 
 // =============================================
-// DTOs UNTUK INHERENT RISK
+// DTOs UNTUK CREATE/UPDATE (SESUAI BACKEND)
 // =============================================
 
-export interface CreateKepatuhanDto {
+export interface CreateKepatuhanProdukInherentDto {
   year: number;
   quarter: number;
   isActive?: boolean;
   createdBy?: string;
   version?: string;
-  notes?: string;
-  summary?: {
-    totalWeighted?: number;
-    summaryBg?: string;
-    computedAt?: Date;
-  };
 }
 
-export interface UpdateKepatuhanDto {
+export interface UpdateKepatuhanProdukInherentDto {
   year?: number;
   quarter?: number;
   isActive?: boolean;
@@ -139,7 +131,7 @@ export interface UpdateParameterDto {
 
 export interface CreateNilaiDto {
   nomor?: string;
-  judul?: {
+  judul: {
     type?: string;
     text?: string;
     value?: string | number | null;
@@ -189,20 +181,6 @@ export interface UpdateNilaiDto {
   orderIndex?: number;
 }
 
-export interface ReorderParametersDto {
-  parameterIds: number[];
-}
-
-export interface ReorderNilaiDto {
-  nilaiIds: number[];
-}
-
-export interface UpdateSummaryDto {
-  totalWeighted?: number;
-  summaryBg?: string;
-  computedAt?: Date;
-}
-
 // =============================================
 // REFERENCE TYPES
 // =============================================
@@ -224,30 +202,25 @@ export interface ReferenceItem {
 // MAIN SERVICE CLASS
 // =============================================
 
-export class KepatuhanService {
-  private baseUrl = '/kepatuhan-ojk';
-
-  // =============================================
-  // FIND OR CREATE UTILITY
-  // =============================================
+export class KepatuhanProdukService {
+  private baseUrl = '/kepatuhan';
 
   async findOrCreate(
     year: number,
     quarter: number,
   ): Promise<{
     success: boolean;
-    data: KepatuhanOjkEntity | null;
+    data: KepatuhanProdukOjkEntity | null;
     isNew: boolean;
     message: string;
   }> {
     console.log(`[Service] findOrCreate: ${year}-Q${quarter}`);
 
     try {
-      // 1. Cari data yang sudah ada
       const existingData = await this.findByYearQuarter(year, quarter);
 
       if (existingData) {
-        console.log(`[Service] findOrCreate: Data found, ID: ${existingData.id}`);
+        console.log(`[Service] findOrCreate: Found existing ID=${existingData.id}`);
         return {
           success: true,
           data: existingData,
@@ -256,21 +229,18 @@ export class KepatuhanService {
         };
       }
 
-      // 2. Jika tidak ada, buat data baru
       console.log(`[Service] findOrCreate: Creating new data`);
-
-      const createDto: CreateKepatuhanDto = {
+      const newData = await this.create({
         year,
         quarter,
         isActive: true,
         createdBy: 'system',
         version: '1.0.0',
-      };
+      });
 
-      const newData = await this.create(createDto);
+      if (!newData?.parameters) newData.parameters = [];
 
-      console.log(`[Service] findOrCreate: New data created, ID: ${newData.id}`);
-
+      console.log(`[Service] findOrCreate: Created ID=${newData.id}`);
       return {
         success: true,
         data: newData,
@@ -278,21 +248,25 @@ export class KepatuhanService {
         message: 'Data berhasil dibuat',
       };
     } catch (error: any) {
-      console.error('[Service] findOrCreate error:', error);
+      console.error('[Service] findOrCreate error:', error.message);
+
+      try {
+        const retryData = await this.findByYearQuarter(year, quarter);
+        if (retryData) {
+          return { success: true, data: retryData, isNew: false, message: 'Data ditemukan (retry)' };
+        }
+      } catch {}
 
       return {
         success: false,
         data: null,
         isNew: false,
-        message: error.message || 'Gagal memuat atau membuat data',
+        message: error.message || 'Gagal memuat data',
       };
     }
   }
 
-  /**
-   * Method untuk memastikan data tersedia sebelum operasi
-   */
-  async ensureDataExists(year: number, quarter: number): Promise<KepatuhanOjkEntity> {
+  async ensureDataExists(year: number, quarter: number): Promise<KepatuhanProdukOjkEntity> {
     console.log(`[Service] ensureDataExists: ${year}-Q${quarter}`);
 
     const result = await this.findOrCreate(year, quarter);
@@ -301,7 +275,6 @@ export class KepatuhanService {
       throw new Error(`Gagal memastikan data tersedia: ${result.message}`);
     }
 
-    // Pastikan parameters array
     if (!Array.isArray(result.data.parameters)) {
       result.data.parameters = [];
     }
@@ -309,24 +282,22 @@ export class KepatuhanService {
     return result.data;
   }
 
-  /**
-   * Method untuk load data dengan auto-create jika tidak ada
-   */
-  async loadOrCreateData(year: number, quarter: number): Promise<KepatuhanOjkEntity> {
+  async loadOrCreateData(year: number, quarter: number): Promise<KepatuhanProdukOjkEntity> {
     console.log(`[Service] loadOrCreateData: ${year}-Q${quarter}`);
-    return this.ensureDataExists(year, quarter);
+
+    const result = await this.findOrCreate(year, quarter);
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Gagal memuat data');
+    }
+
+    return result.data;
   }
 
-  // =============================================
-  // FORMATTING UTILITIES
-  // =============================================
-
-  /**
-   * Helper untuk format data ke frontend
-   */
-  private formatToFrontend(entity: KepatuhanOjkEntity | null): any[] {
+  public formatToFrontend(entity: KepatuhanProdukOjkEntity | null): any[] {
     console.log('[Service] formatToFrontend - Input entity:', {
       entity,
+      entityType: typeof entity,
       hasParameters: !!entity?.parameters,
       parametersType: Array.isArray(entity?.parameters) ? 'array' : typeof entity?.parameters,
     });
@@ -336,36 +307,53 @@ export class KepatuhanService {
       return [];
     }
 
-    // Pastikan parameters selalu array
     const parameters = Array.isArray(entity.parameters) ? entity.parameters : [];
 
     console.log(`[Service] formatToFrontend: Processing ${parameters.length} parameters`);
 
-    const result = parameters.map((parameter, index) => {
-      // Pastikan nilaiList selalu array
-      const nilaiList = Array.isArray(parameter.nilaiList) ? parameter.nilaiList : [];
+    const result = parameters.map((param, index) => {
+      const nilaiList = Array.isArray(param.nilaiList) ? param.nilaiList : [];
 
-      const formattedParameter = {
-        id: parameter.id?.toString() || `temp-${Date.now()}-${index}`,
-        nomor: parameter.nomor || '',
-        judul: parameter.judul || '',
-        bobot: parameter.bobot || 0,
-        kategori: parameter.kategori || {},
-        orderIndex: parameter.orderIndex || index,
-        // Format nilaiList
+      const formattedParam = {
+        id: param.id?.toString() || `temp-${Date.now()}-${index}`,
+        nomor: param.nomor || '',
+        judul: param.judul || '',
+        bobot: param.bobot || 0,
+        kategori: param.kategori || {
+          model: '',
+          prinsip: '',
+          jenis: '',
+          underlying: [],
+        },
+        orderIndex: param.orderIndex || index,
         nilaiList: nilaiList.map((nilai, idx) => ({
           id: nilai.id?.toString() || `temp-nilai-${Date.now()}-${idx}`,
           nomor: nilai.nomor || '',
-          judul: nilai.judul || { text: '' },
+          judul: nilai.judul || {
+            type: 'Tanpa Faktor',
+            text: '',
+            value: null,
+            pembilang: '',
+            valuePembilang: null,
+            penyebut: '',
+            valuePenyebut: null,
+            formula: '',
+            percent: false,
+          },
           bobot: nilai.bobot || 0,
           portofolio: nilai.portofolio || '',
           keterangan: nilai.keterangan || '',
-          riskindikator: nilai.riskindikator || {},
+          riskindikator: nilai.riskindikator || {
+            low: '',
+            lowToModerate: '',
+            moderate: '',
+            moderateToHigh: '',
+            high: '',
+          },
           orderIndex: nilai.orderIndex || idx,
         })),
-        // Metadata dari kepatuhan
         metadata: {
-          kepatuhanId: entity.id,
+          inherentId: entity.id,
           year: entity.year,
           quarter: entity.quarter,
           isActive: entity.isActive,
@@ -375,21 +363,18 @@ export class KepatuhanService {
       };
 
       console.log(`[Service] formatToFrontend: Parameter ${index} formatted:`, {
-        id: formattedParameter.id,
-        judul: formattedParameter.judul,
-        nilaiCount: formattedParameter.nilaiList.length,
+        id: formattedParam.id,
+        judul: formattedParam.judul,
+        nilaiCount: formattedParam.nilaiList.length,
       });
 
-      return formattedParameter;
+      return formattedParam;
     });
 
     console.log('[Service] formatToFrontend: Final result length:', result.length);
     return result;
   }
 
-  /**
-   * Helper untuk log error
-   */
   private handleError(error: any, operation: string, url?: string): never {
     const errorDetails = {
       operation,
@@ -399,9 +384,10 @@ export class KepatuhanService {
       statusText: error.response?.statusText,
       url: url || error.config?.url,
       method: error.config?.method,
+      headers: error.config?.headers,
     };
 
-    console.error(`[KepatuhanService] Error in ${operation}:`, errorDetails);
+    console.error(`[KepatuhanProdukService] Error in ${operation}:`, errorDetails);
 
     let errorMessage = `Gagal melakukan operasi ${operation}`;
 
@@ -418,9 +404,6 @@ export class KepatuhanService {
     throw new Error(errorMessage);
   }
 
-  /**
-   * Helper untuk debug API calls
-   */
   private logApiCall(method: string, url: string, params?: any, data?: any) {
     console.log(`[Service] API ${method.toUpperCase()}:`, {
       url,
@@ -434,32 +417,46 @@ export class KepatuhanService {
   // CRUD UTAMA
   // =============================================
 
-  async findActive(): Promise<KepatuhanOjkEntity | null> {
+  async findActive(): Promise<KepatuhanProdukOjkEntity | null> {
     const url = `${this.baseUrl}/active`;
     this.logApiCall('GET', url);
 
     try {
-      const response = await api_kepatuhan_produk.get<KepatuhanOjkEntity>(url);
+      const response = await api_kepatuhan_produk.get<KepatuhanProdukOjkEntity>(url);
+
+      console.log('[Service] findActive - Response:', {
+        status: response.status,
+        hasData: !!response.data,
+        parameters: Array.isArray(response.data?.parameters) ? response.data.parameters.length : 'not array',
+      });
 
       if (!response.data) {
+        console.log('[Service] findActive: No data returned');
         return null;
       }
 
-      // Pastikan parameters array
       if (!Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
 
       return response.data;
     } catch (error: any) {
+      console.log('[Service] findActive - Error:', {
+        status: error.response?.status,
+        message: error.message,
+        url,
+      });
+
       if (error.response?.status === 404) {
+        console.log('[Service] findActive: 404 - No active data found');
         return null;
       }
+
       this.handleError(error, 'findActive', url);
     }
   }
 
-  async findByYearQuarter(year: number, quarter: number): Promise<KepatuhanOjkEntity | null> {
+  async findByYearQuarter(year: number, quarter: number): Promise<KepatuhanProdukOjkEntity | null> {
     const url = this.baseUrl;
     const params = { year, quarter };
 
@@ -468,41 +465,78 @@ export class KepatuhanService {
     try {
       const response = await api_kepatuhan_produk.get<any>(url, { params });
 
-      if (!response.data) {
-        return null;
+      console.log('[Service] findByYearQuarter - Response:', {
+        status: response.status,
+        hasSuccess: response.data?.success !== undefined,
+        hasData: !!response.data?.data,
+      });
+
+      if (response.data?.success !== undefined) {
+        const result = response.data.data;
+
+        if (!result) {
+          console.log('[Service] findByYearQuarter: Data not found (null from backend)');
+          return null;
+        }
+
+        if (!Array.isArray(result.parameters)) {
+          result.parameters = [];
+        }
+
+        return result;
       }
 
       let data = response.data;
-
-      // Handle response array
       if (Array.isArray(data)) {
         data = data.length > 0 ? data[0] : null;
       }
-
-      if (!data) {
-        return null;
-      }
-
-      // Pastikan parameters array
-      if (!Array.isArray(data.parameters)) {
-        data.parameters = [];
-      }
+      if (!data) return null;
+      if (!Array.isArray(data.parameters)) data.parameters = [];
 
       return data;
     } catch (error: any) {
       if (error.response?.status === 404) {
+        console.log('[Service] findByYearQuarter: 404 - Data not found');
         return null;
       }
       this.handleError(error, 'findByYearQuarter', `${url}?year=${year}&quarter=${quarter}`);
     }
   }
 
-  async getById(id: number): Promise<KepatuhanOjkEntity> {
+  async getAll(): Promise<KepatuhanProdukOjkEntity[]> {
+    const url = this.baseUrl;
+    this.logApiCall('GET', url);
+
+    try {
+      const response = await api_kepatuhan_produk.get<any>(url);
+
+      console.log('[Service] getAll - Response type:', Array.isArray(response.data) ? 'array' : typeof response.data);
+
+      let data = response.data;
+
+      if (!Array.isArray(data)) {
+        console.log('[Service] getAll: Converting non-array response to array');
+        data = data ? [data] : [];
+      }
+
+      const result = data.map((item: any, index: number) => ({
+        ...item,
+        parameters: Array.isArray(item.parameters) ? item.parameters : [],
+      }));
+
+      console.log('[Service] getAll: Returning', result.length, 'items');
+      return result;
+    } catch (error: any) {
+      this.handleError(error, 'getAll', url);
+    }
+  }
+
+  async getById(id: number): Promise<KepatuhanProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}`;
     this.logApiCall('GET', url);
 
     try {
-      const response = await api_kepatuhan_produk.get<KepatuhanOjkEntity>(url);
+      const response = await api_kepatuhan_produk.get<KepatuhanProdukOjkEntity>(url);
 
       if (response.data && !Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
@@ -514,48 +548,48 @@ export class KepatuhanService {
     }
   }
 
-  async create(createDto: CreateKepatuhanDto): Promise<KepatuhanOjkEntity> {
+  async create(createDto: CreateKepatuhanProdukInherentDto): Promise<KepatuhanProdukOjkEntity> {
     const url = this.baseUrl;
     this.logApiCall('POST', url, undefined, createDto);
 
     try {
-      const response = await api_kepatuhan_produk.post<KepatuhanOjkEntity>(url, createDto);
+      const response = await api_kepatuhan_produk.post<KepatuhanProdukOjkEntity>(url, createDto);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'create', url);
     }
   }
 
-  async update(id: number, updateDto: UpdateKepatuhanDto): Promise<KepatuhanOjkEntity> {
+  async update(id: number, updateDto: UpdateKepatuhanProdukInherentDto): Promise<KepatuhanProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}`;
     this.logApiCall('PUT', url, undefined, updateDto);
 
     try {
-      const response = await api_kepatuhan_produk.put<KepatuhanOjkEntity>(url, updateDto);
+      const response = await api_kepatuhan_produk.put<KepatuhanProdukOjkEntity>(url, updateDto);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'update', url);
     }
   }
 
-  async updateActiveStatus(id: number, isActive: boolean): Promise<KepatuhanOjkEntity> {
+  async updateActiveStatus(id: number, isActive: boolean): Promise<KepatuhanProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}/status`;
     this.logApiCall('PUT', url, undefined, { isActive });
 
     try {
-      const response = await api_kepatuhan_produk.put<KepatuhanOjkEntity>(url, { isActive });
+      const response = await api_kepatuhan_produk.put<KepatuhanProdukOjkEntity>(url, { isActive });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateActiveStatus', url);
     }
   }
 
-  async updateSummary(id: number, summary: UpdateKepatuhanDto['summary']): Promise<KepatuhanOjkEntity> {
+  async updateSummary(id: number, summary: UpdateKepatuhanProdukInherentDto['summary']): Promise<KepatuhanProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}/summary`;
     this.logApiCall('PUT', url, undefined, { summary });
 
     try {
-      const response = await api_kepatuhan_produk.put<KepatuhanOjkEntity>(url, { summary });
+      const response = await api_kepatuhan_produk.put<KepatuhanProdukOjkEntity>(url, { summary });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateSummary', url);
@@ -575,25 +609,13 @@ export class KepatuhanService {
   }
 
   // =============================================
-  // OPERASI PARAMETER (✅ INHERENT)
+  // OPERASI PARAMETER
   // =============================================
 
-  async getParameters(kepatuhanId: number): Promise<ParameterEntity[]> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters`;
-    this.logApiCall('GET', url);
+  async addParameter(inherentId: number, dto: CreateParameterDto): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters`;
 
-    try {
-      const response = await api_kepatuhan_produk.get<ParameterEntity[]>(url);
-      return response.data || [];
-    } catch (error: any) {
-      this.handleError(error, 'getParameters', url);
-    }
-  }
-
-  async addParameter(kepatuhanId: number, dto: CreateParameterDto): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters`;
-
-    console.log('[Service] addParameter:', { url, kepatuhanId, dto });
+    console.log('[Service] addParameter:', { url, inherentId, dto });
 
     try {
       const payload: CreateParameterDto = {
@@ -604,20 +626,29 @@ export class KepatuhanService {
 
       this.logApiCall('POST', url, undefined, payload);
 
-      const response = await api_kepatuhan_produk.post<KepatuhanOjkEntity>(url, payload);
+      const response = await api_kepatuhan_produk.post<KepatuhanProdukOjkEntity>(url, payload);
 
       if (response.data && !Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
 
+      console.log('[Service] addParameter - Success:', { newParameterId: response.data.id });
+
       return response.data;
     } catch (error: any) {
+      console.error('[Service] Error in addParameter:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url,
+      });
+
       this.handleError(error, 'addParameter', url);
     }
   }
 
-  async updateParameter(kepatuhanId: number, parameterId: number, dto: UpdateParameterDto): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}`;
+  async updateParameter(inherentId: number, parameterId: number, dto: UpdateParameterDto): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}`;
 
     try {
       const payload: UpdateParameterDto = { ...dto };
@@ -632,39 +663,39 @@ export class KepatuhanService {
 
       this.logApiCall('PUT', url, undefined, payload);
 
-      const response = await api_kepatuhan_produk.put<KepatuhanOjkEntity>(url, payload);
+      const response = await api_kepatuhan_produk.put<KepatuhanProdukOjkEntity>(url, payload);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateParameter', url);
     }
   }
 
-  async copyParameter(kepatuhanId: number, parameterId: number): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/copy`;
+  async copyParameter(inherentId: number, parameterId: number): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/copy`;
     this.logApiCall('POST', url);
 
     try {
-      const response = await api_kepatuhan_produk.post<KepatuhanOjkEntity>(url);
+      const response = await api_kepatuhan_produk.post<KepatuhanProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'copyParameter', url);
     }
   }
 
-  async removeParameter(kepatuhanId: number, parameterId: number): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}`;
+  async removeParameter(inherentId: number, parameterId: number): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}`;
     this.logApiCall('DELETE', url);
 
     try {
-      const response = await api_kepatuhan_produk.delete<KepatuhanOjkEntity>(url);
+      const response = await api_kepatuhan_produk.delete<KepatuhanProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'removeParameter', url);
     }
   }
 
-  async reorderParameters(kepatuhanId: number, parameterIds: number[]): Promise<{ message: string }> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/reorder`;
+  async reorderParameters(inherentId: number, parameterIds: number[]): Promise<{ message: string }> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/reorder`;
 
     try {
       const response = await api_kepatuhan_produk.put<{ message: string }>(url, { parameterIds });
@@ -675,44 +706,43 @@ export class KepatuhanService {
   }
 
   // =============================================
-  // OPERASI NILAI (✅ INHERENT)
+  // OPERASI NILAI
   // =============================================
 
-  async getNilai(kepatuhanId: number, parameterId: number): Promise<NilaiEntity[]> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/nilai`;
-    this.logApiCall('GET', url);
-
-    try {
-      const response = await api_kepatuhan_produk.get<NilaiEntity[]>(url);
-      return response.data || [];
-    } catch (error: any) {
-      this.handleError(error, 'getNilai', url);
-    }
-  }
-
-  async addNilai(kepatuhanId: number, parameterId: number, dto: CreateNilaiDto): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/nilai`;
+  async addNilai(inherentId: number, parameterId: number, dto: CreateNilaiDto): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai`;
 
     try {
       const payload: CreateNilaiDto = {
         ...dto,
+        judul: {
+          ...dto.judul,
+          text: typeof dto.judul.text === 'string' ? dto.judul.text.trim() : String(dto.judul.text || '').trim(),
+        },
         bobot: Number(dto.bobot) || 0,
       };
 
       this.logApiCall('POST', url, undefined, payload);
 
-      const response = await api_kepatuhan_produk.post<KepatuhanOjkEntity>(url, payload);
+      const response = await api_kepatuhan_produk.post<KepatuhanProdukOjkEntity>(url, payload);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'addNilai', url);
     }
   }
 
-  async updateNilai(kepatuhanId: number, parameterId: number, nilaiId: number, dto: UpdateNilaiDto): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/nilai/${nilaiId}`;
+  async updateNilai(inherentId: number, parameterId: number, nilaiId: number, dto: UpdateNilaiDto): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}`;
 
     try {
       const payload: UpdateNilaiDto = { ...dto };
+
+      if (dto.judul?.text !== undefined) {
+        payload.judul = {
+          ...dto.judul,
+          text: typeof dto.judul.text === 'string' ? dto.judul.text.trim() : String(dto.judul.text || '').trim(),
+        };
+      }
 
       if (dto.bobot !== undefined) {
         payload.bobot = Number(dto.bobot);
@@ -720,39 +750,39 @@ export class KepatuhanService {
 
       this.logApiCall('PUT', url, undefined, payload);
 
-      const response = await api_kepatuhan_produk.put<KepatuhanOjkEntity>(url, payload);
+      const response = await api_kepatuhan_produk.put<KepatuhanProdukOjkEntity>(url, payload);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateNilai', url);
     }
   }
 
-  async copyNilai(kepatuhanId: number, parameterId: number, nilaiId: number): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/nilai/${nilaiId}/copy`;
+  async copyNilai(inherentId: number, parameterId: number, nilaiId: number): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}/copy`;
     this.logApiCall('POST', url);
 
     try {
-      const response = await api_kepatuhan_produk.post<KepatuhanOjkEntity>(url);
+      const response = await api_kepatuhan_produk.post<KepatuhanProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'copyNilai', url);
     }
   }
 
-  async removeNilai(kepatuhanId: number, parameterId: number, nilaiId: number): Promise<KepatuhanOjkEntity> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/nilai/${nilaiId}`;
+  async removeNilai(inherentId: number, parameterId: number, nilaiId: number): Promise<KepatuhanProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}`;
     this.logApiCall('DELETE', url);
 
     try {
-      const response = await api_kepatuhan_produk.delete<KepatuhanOjkEntity>(url);
+      const response = await api_kepatuhan_produk.delete<KepatuhanProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'removeNilai', url);
     }
   }
 
-  async reorderNilai(kepatuhanId: number, parameterId: number, nilaiIds: number[]): Promise<{ message: string }> {
-    const url = `${this.baseUrl}/${kepatuhanId}/parameters/${parameterId}/nilai/reorder`;
+  async reorderNilai(inherentId: number, parameterId: number, nilaiIds: number[]): Promise<{ message: string }> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/reorder`;
 
     try {
       const response = await api_kepatuhan_produk.put<{ message: string }>(url, { nilaiIds });
@@ -766,8 +796,8 @@ export class KepatuhanService {
   // IMPORT/EXPORT OPERATIONS
   // =============================================
 
-  async exportToExcel(kepatuhanId: number): Promise<any> {
-    const url = `${this.baseUrl}/${kepatuhanId}/export`;
+  async exportToExcel(inherentId: number): Promise<any> {
+    const url = `${this.baseUrl}/${inherentId}/export`;
     this.logApiCall('GET', url);
 
     try {
@@ -778,12 +808,12 @@ export class KepatuhanService {
     }
   }
 
-  async importFromExcel(importData: any): Promise<KepatuhanOjkEntity> {
+  async importFromExcel(importData: any): Promise<KepatuhanProdukOjkEntity> {
     const url = `${this.baseUrl}/import`;
     this.logApiCall('POST', url, undefined, importData);
 
     try {
-      const response = await api_kepatuhan_produk.post<KepatuhanOjkEntity>(url, importData);
+      const response = await api_kepatuhan_produk.post<KepatuhanProdukOjkEntity>(url, importData);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'importFromExcel', url);
@@ -812,35 +842,36 @@ export class KepatuhanService {
   // UTILITY METHODS
   // =============================================
 
-  async checkExists(year: number, quarter: number): Promise<{ exists: boolean; data: KepatuhanOjkEntity | null }> {
+  async checkExists(year: number, quarter: number): Promise<{ exists: boolean; data: KepatuhanProdukOjkEntity | null }> {
     try {
+      console.log(`[Service] checkExists for ${year}-Q${quarter}`);
       const data = await this.findByYearQuarter(year, quarter);
-      return {
-        exists: !!data,
-        data,
-      };
+      return { exists: !!data, data };
     } catch (error: any) {
-      return {
-        exists: false,
-        data: null,
-      };
+      console.log('[Service] checkExists error:', error.message);
+      return { exists: false, data: null };
     }
   }
 
-  async loadOrCreate(year: number, quarter: number): Promise<KepatuhanOjkEntity> {
+  async loadOrCreate(year: number, quarter: number): Promise<KepatuhanProdukOjkEntity> {
     console.log(`[Service] loadOrCreate: ${year}-Q${quarter}`);
 
     try {
       let data = await this.findByYearQuarter(year, quarter);
 
       if (data) {
+        console.log(`[Service] loadOrCreate: Found existing data, ID: ${data.id}`);
+
         if (!Array.isArray(data.parameters)) {
           data.parameters = [];
         }
+
         return data;
       }
 
-      const createDto: CreateKepatuhanDto = {
+      console.log(`[Service] loadOrCreate: Creating new data`);
+
+      const createDto: CreateKepatuhanProdukInherentDto = {
         year,
         quarter,
         isActive: true,
@@ -853,11 +884,17 @@ export class KepatuhanService {
         data.parameters = [];
       }
 
+      console.log(`[Service] loadOrCreate: New data created, ID: ${data.id}`);
       return data;
     } catch (error: any) {
-      console.error('[Service] loadOrCreate error:', error);
+      console.error('[Service] loadOrCreate error:', {
+        message: error.message,
+        year,
+        quarter,
+        stack: error.stack,
+      });
 
-      const fallbackData: KepatuhanOjkEntity = {
+      const fallbackData: KepatuhanProdukOjkEntity = {
         id: -1,
         year,
         quarter,
@@ -867,6 +904,7 @@ export class KepatuhanService {
         updatedAt: new Date(),
       };
 
+      console.log('[Service] loadOrCreate: Returning fallback data');
       return fallbackData;
     }
   }
@@ -875,7 +913,7 @@ export class KepatuhanService {
     console.log(`[Service] getFormattedData: year=${year}, quarter=${quarter}`);
 
     try {
-      let data: KepatuhanOjkEntity | null = null;
+      let data: KepatuhanProdukOjkEntity | null = null;
 
       if (year && quarter) {
         data = await this.findByYearQuarter(year, quarter);
@@ -884,18 +922,79 @@ export class KepatuhanService {
       }
 
       const result = this.formatToFrontend(data);
+
+      console.log(`[Service] getFormattedData: Returning ${result.length} parameters`);
       return result;
     } catch (error: any) {
-      console.error('[Service] getFormattedData error:', error);
+      console.error('[Service] getFormattedData error:', {
+        message: error.message,
+        year,
+        quarter,
+      });
+
       return [];
     }
   }
 
+  formatParameterJudul(judul: any): string {
+    if (!judul) return '';
+
+    if (typeof judul === 'string') {
+      return judul.trim();
+    }
+
+    if (typeof judul === 'object' && judul !== null) {
+      return judul.text || judul.judul || judul.value || judul.label || '';
+    }
+
+    return String(judul).trim();
+  }
+
+  formatNilaiJudul(judul: any): CreateNilaiDto['judul'] {
+    if (!judul) {
+      return {
+        type: 'Tanpa Faktor',
+        text: '',
+        value: null,
+        pembilang: '',
+        valuePembilang: null,
+        penyebut: '',
+        valuePenyebut: null,
+        formula: '',
+        percent: false,
+      };
+    }
+
+    if (typeof judul === 'string') {
+      return {
+        type: 'Tanpa Faktor',
+        text: judul.trim(),
+        value: null,
+        pembilang: '',
+        valuePembilang: null,
+        penyebut: '',
+        valuePenyebut: null,
+        formula: '',
+        percent: false,
+      };
+    }
+
+    return {
+      type: judul.type || 'Tanpa Faktor',
+      text: judul.text || '',
+      value: judul.value ?? null,
+      pembilang: judul.pembilang || '',
+      valuePembilang: judul.valuePembilang ?? null,
+      penyebut: judul.penyebut || '',
+      valuePenyebut: judul.valuePenyebut ?? null,
+      formula: judul.formula || '',
+      percent: judul.percent || false,
+    };
+  }
+
   async validateConnection(): Promise<boolean> {
     try {
-      const response = await api_kepatuhan_produk.get(this.baseUrl, {
-        timeout: 5000,
-      });
+      const response = await api_kepatuhan_produk.get(this.baseUrl, { timeout: 5000 });
       return response.status === 200;
     } catch (error) {
       console.error('[Service] API connection failed:', error);
@@ -904,6 +1003,5 @@ export class KepatuhanService {
   }
 }
 
-// Export singleton instance
-export const kepatuhanService = new KepatuhanService();
-export default kepatuhanService;
+export const kepatuhanProdukService = new KepatuhanProdukService();
+export default kepatuhanProdukService;

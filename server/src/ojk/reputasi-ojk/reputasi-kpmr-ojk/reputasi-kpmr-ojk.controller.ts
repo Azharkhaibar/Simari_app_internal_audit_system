@@ -43,7 +43,7 @@ import {
   FrontendPertanyaanResponseDto,
 } from './dto/reputasi-kpmr.dto';
 
-@ApiTags('ReputasiProdukKpmr')
+@ApiTags('ReputasiKpmr')
 @Controller('kpmr-reputasi')
 @UseInterceptors(ClassSerializerInterceptor)
 export class KpmrReputasiController {
@@ -54,10 +54,10 @@ export class KpmrReputasiController {
   @ApiOperation({ summary: 'Buat KPMR baru' })
   async create(
     @Body() createDto: CreateKpmrReputasiOjkDto,
-    @Request() req,
+    @Request() req, // ✅ TAMBAHKAN REQUEST
   ): Promise<FrontendKpmrResponseDto> {
-    const userId = req.user?.id || 'system';
-    return this.kpmrService.createKpmr(createDto, userId);
+    const userId = req.user?.id || 'system'; // ✅ AMBIL USER ID
+    return this.kpmrService.createKpmr(createDto, userId); // ✅ KIRIM 2 PARAMETER!
   }
 
   @Get()
@@ -320,7 +320,6 @@ export class KpmrReputasiController {
     if (isNaN(aspekIdNum)) {
       throw new BadRequestException('aspekId harus berupa angka');
     }
-
     return this.kpmrService.createPertanyaan(aspekIdNum, createDto);
   }
 
@@ -413,12 +412,13 @@ export class KpmrReputasiController {
   @Get(':id/validate')
   @ApiOperation({ summary: 'Validasi data KPMR' })
   async validateKpmr(
-    @Param('id') id: string,
+    @Param('id') id: string, // ✅ TERIMA ID, BUKAN YEAR/QUARTER!
   ): Promise<{ isValid: boolean; errors: string[]; warnings: string[] }> {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) {
       throw new BadRequestException('ID harus berupa angka');
     }
+
 
     return this.kpmrService.validateKpmrData(idNum);
   }
@@ -431,6 +431,7 @@ export class KpmrReputasiController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
+    // ✅ PANGGIL METHOD YANG BARU
     return this.kpmrService.getKpmrStatistics(idNum);
   }
 }

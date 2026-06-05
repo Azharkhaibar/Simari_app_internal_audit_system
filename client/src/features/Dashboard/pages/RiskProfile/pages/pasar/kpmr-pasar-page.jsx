@@ -1,12 +1,18 @@
 // src/features/Dashboard/pages/RiskProfile/pages/Pasar/kpmr-pasar-page.jsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Download, Trash2, Edit3, Search, X } from 'lucide-react';
-import { getCurrentYear } from './utils/pasar/time';
+// import { getCurrentYear } from './utils/pasar/time';
 // import { exportKPMRPasarToExcel } from './utils/pasar/exportexcelkpmrpasar';
+// import { useKpmrPasar } from './hooks/KPMR/kpmr-pasar.hook';
+// import ToastNotification from './components/kpmr-pasar/ToastNotification';
+import { getCurrentYear } from './utils/pasar/time';
 import { exportKPMRPasarToExcel } from './utils/pasar/exportexcelkpmr_pasar';
+
 import { useKpmrPasar } from './hooks/kpmr-pasar/kpmr-pasar.hook';
 import ToastNotification from './components/kpmr-pasar/ToastNotification';
 
+import { useAuditLog } from '../../../audit-log/hooks/audit-log.hooks';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 // ===================== Brand =====================
 const PNM_BRAND = {
   primary: '#0068B3',
@@ -41,13 +47,19 @@ const QUARTER_LABEL = {
   Q4: 'DES',
 };
 
-export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: propViewQuarter, onViewYearChange, query: propQuery, onQueryChange }) {
+export default function PasarKPMR({ viewYear: propViewYear, viewQuarter: propViewQuarter, onViewYearChange, query: propQuery, onQueryChange }) {
+  // ===== AUDIT LOG =====
+  const { logCreate, logUpdate, logDelete, logExport } = useAuditLog();
+  const { authUser } = useAuth();
+  const getCurrentUser = () => ({
+    userId: authUser?.id || localStorage.getItem('userId') || null,
+  });
   // ===== STATE DENGAN FALLBACK =====
   const [localViewYear, setLocalViewYear] = useState(() => {
     if (propViewYear && typeof propViewYear === 'number' && !isNaN(propViewYear)) {
       return propViewYear;
     }
-    const saved = localStorage.getItem('kpmr_pasar_viewYear');
+    const saved = localStorage.getItem('kpmr_viewYear');
     return saved ? Number(saved) : getCurrentYear();
   });
 
@@ -73,7 +85,7 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
   const setViewYear = useCallback(
     (year) => {
       setLocalViewYear(year);
-      localStorage.setItem('kpmr_pasar_viewYear', year);
+      localStorage.setItem('kpmr_viewYear', year);
       if (typeof onViewYearChange === 'function') {
         onViewYearChange(year);
       }
@@ -189,6 +201,18 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
         }
 
         showToast(`Aspek "${editingAspectData.aspekTitle}" berhasil diupdate`, 'success');
+        try {
+          const user = getCurrentUser();
+          await logUpdate(
+            'PASAR',
+            `Mengupdate Aspek KPMR Pasar: No. ${editingAspectData.aspekNo} - "${editingAspectData.aspekTitle}", Tahun: ${viewYear}`,
+            {
+              userId: user.userId,
+              isSuccess: true,
+              metadata: { type: 'kpmr', aspekId: editingAspectData.id, aspekNo: editingAspectData.aspekNo, aspekTitle: editingAspectData.aspekTitle, year: viewYear }
+            }
+          );
+        } catch (logErr) { console.warn('Audit log gagal (update aspek):', logErr); }
         setShowEditAspectModal(false);
 
         await Promise.all([fetchAspects(viewYear), fetchFullData(viewYear), fetchDefinitions(viewYear)]);
@@ -222,6 +246,18 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
 
       if (result && result.success) {
         showToast(result.message || 'Pertanyaan berhasil dihapus', 'success');
+        try {
+          const user = getCurrentUser();
+          await logDelete(
+            'PASAR',
+            `Menghapus Pertanyaan KPMR Pasar: "${sectionTitle}" (No: ${sectionNo}) dari Aspek: ${aspekNo} - ${aspekTitle}`,
+            {
+              userId: user.userId,
+              isSuccess: true,
+              metadata: { type: 'kpmr', questionId, aspekNo, sectionNo, year: viewYear }
+            }
+          );
+        } catch (logErr) { console.warn('Audit log gagal (delete question):', logErr); }
 
         await Promise.all([fetchQuestions(viewYear), fetchFullData(viewYear), fetchAspects(viewYear)]);
       } else {
@@ -484,6 +520,18 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
       setKPMR_isAddingNewQuestion(false);
 
       showToast('Data berhasil disimpan!', 'success');
+      try {
+        const user = getCurrentUser();
+        await logCreate(
+          'PASAR',
+          `Menambah data KPMR Pasar - Aspek: ${KPMR_form.aspekNo} ${KPMR_form.aspekTitle}, Pertanyaan: ${KPMR_form.sectionNo}, Tahun: ${KPMR_form.year}, Triwulan: ${KPMR_form.quarter}`,
+          {
+            userId: user.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', aspekNo: KPMR_form.aspekNo, sectionNo: KPMR_form.sectionNo, year: KPMR_form.year, quarter: KPMR_form.quarter }
+          }
+        );
+      } catch (logErr) { console.warn('Audit log gagal (create):', logErr); }
     } catch (err) {
       console.error('Gagal menyimpan data:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan';
@@ -741,6 +789,18 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
       setShowKPMRForm(false);
 
       showToast('Data berhasil diupdate!', 'success');
+      try {
+        const user = getCurrentUser();
+        await logUpdate(
+          'PASAR',
+          `Mengupdate data KPMR Pasar - Aspek: ${KPMR_form.aspekNo}, Pertanyaan: ${KPMR_form.sectionNo}, Tahun: ${KPMR_form.year}, Triwulan: ${KPMR_form.quarter}`,
+          {
+            userId: user.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', aspekNo: KPMR_form.aspekNo, sectionNo: KPMR_form.sectionNo, year: KPMR_form.year, quarter: KPMR_form.quarter }
+          }
+        );
+      } catch (logErr) { console.warn('Audit log gagal (update):', logErr); }
     } catch (err) {
       console.error('❌ Gagal mengupdate data:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan';
@@ -762,6 +822,18 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
       const result = await deleteAspect(aspectId);
       if (result && result.success) {
         showToast(result.message || `Aspek "${aspectName}" berhasil dihapus`, 'success');
+        try {
+          const user = getCurrentUser();
+          await logDelete(
+            'PASAR',
+            `Menghapus Aspek KPMR Pasar: "${aspectName}" (ID: ${aspectId}), Tahun: ${viewYear}`,
+            {
+              userId: user.userId,
+              isSuccess: true,
+              metadata: { type: 'kpmr', aspectId, aspectName, year: viewYear }
+            }
+          );
+        } catch (logErr) { console.warn('Audit log gagal (delete aspek):', logErr); }
         await Promise.all([fetchAspects(viewYear), fetchQuestions(viewYear), fetchFullData(viewYear)]);
       } else {
         showToast(result?.message || 'Gagal menghapus aspek', 'error');
@@ -773,7 +845,7 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
     }
   };
 
-  const KPMR_exportExcel = () => {
+  const KPMR_exportExcel = async () => {
     try {
       const allRows = groups.flatMap((g) =>
         g.sections.flatMap((s) =>
@@ -800,7 +872,19 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
         rows: allRows,
       });
 
-      showToast(`Data KPMR Pasar tahun ${viewYear} berhasil diexport`, 'success');
+      showToast(`Data KPMR tahun ${viewYear} berhasil diexport`, 'success');
+      try {
+        const user = getCurrentUser();
+        await logExport(
+          'PASAR',
+          `Export Excel KPMR Pasar tahun ${viewYear}`,
+          {
+            userId: user.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', year: viewYear, totalRows: allRows.length, format: 'Excel' }
+          }
+        );
+      } catch (logErr) { console.warn('Audit log gagal (export):', logErr); }
     } catch (err) {
       console.error('Export error:', err);
       showToast('Gagal mengexport data', 'error');
@@ -902,7 +986,7 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
       {showKPMRForm && (
         <section className={`rounded-2xl border shadow p-4 ${PNM_BRAND.gradient} text-white`}>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold drop-shadow">{KPMR_editingTarget ? 'Edit Data KPMR Pasar' : 'Tambah Data KPMR Pasar'}</h2>
+            <h2 className="text-lg font-semibold drop-shadow">{KPMR_editingTarget ? 'Edit Data KPMR' : 'Tambah Data KPMR'}</h2>
             <button
               onClick={() => {
                 setShowKPMRForm(false);
@@ -942,7 +1026,12 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
                     </label>
                     <label className="block col-span-2">
                       <div className="mb-1 text-[13px] text-white/90 font-medium">Judul Aspek</div>
-                      <input className="w-full rounded-xl px-3 py-2 bg-white text-gray-900" value={KPMR_form.aspekTitle} onChange={(e) => KPMR_handleChange('aspekTitle', e.target.value)} placeholder="Contoh: Aspek Manajemen Risiko" />
+                      <input
+                        className="w-full rounded-xl px-3 py-2 bg-white text-gray-900"
+                        value={KPMR_form.aspekTitle}
+                        onChange={(e) => KPMR_handleChange('aspekTitle', e.target.value)}
+                        placeholder="Contoh: Aspek Manajemen Risiko Pasar"
+                      />
                     </label>
                     <label className="block">
                       <div className="mb-1 text-[13px] text-white/90 font-medium">Bobot Aspek</div>
@@ -1121,7 +1210,7 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
                   className="w-full rounded-xl px-4 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   value={editingAspectData.aspekTitle}
                   onChange={(e) => setEditingAspectData({ ...editingAspectData, aspekTitle: e.target.value })}
-                  placeholder="Contoh: Aspek Manajemen Risiko"
+                  placeholder="Contoh: Aspek Manajemen Risiko Pasar"
                 />
               </div>
 
@@ -1247,7 +1336,7 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
                             {calculateAspectAvg(q)}
                           </td>
                         ))}
-                        <td colSpan={6} className="border px-3 py-2"></td>
+                        <td colSpan={6} className="border px-3 py-2"> </td>
                       </tr>
                       {group.sections.map((section, sectionIdx) => {
                         const questionData = questions.find((q) => q.sectionNo === section.sectionNo && q.aspekNo === group.aspekNo && q.year === viewYear);
@@ -1305,7 +1394,7 @@ export default function KPMRPasarPage({ viewYear: propViewYear, viewQuarter: pro
                     {calculateOverallAverage(q)}
                   </td>
                 ))}
-                <td colSpan={6} className="border px-3 py-2"></td>
+                <td colSpan={6} className="border px-3 py-2"> </td>
               </tr>
             </tbody>
           </table>

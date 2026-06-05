@@ -12,7 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { KepatuhanService } from './kepatuhan.service';
 import { CreateKepatuhanSectionDto } from './dto/create-kepatuhan-section.dto';
 import { UpdateKepatuhanSectionDto } from './dto/update-kepatuhan-section.dto';
@@ -30,6 +30,8 @@ export class KepatuhanController {
   @Post('sections')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new kepatuhan section' })
+  @ApiResponse({ status: 201, description: 'Section created successfully' })
+  @ApiResponse({ status: 409, description: 'Section already exists' })
   async createSection(@Body() createDto: CreateKepatuhanSectionDto) {
     return await this.kepatuhanService.createSection(createDto);
   }
@@ -47,6 +49,17 @@ export class KepatuhanController {
     return await this.kepatuhanService.findSectionById(id);
   }
 
+  @Get('sections/period')
+  @ApiOperation({ summary: 'Get kepatuhan sections by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.kepatuhanService.findSectionsByPeriod(year, quarter);
+  }
+
   @Put('sections/:id')
   @ApiOperation({ summary: 'Update kepatuhan section' })
   async updateSection(
@@ -57,23 +70,10 @@ export class KepatuhanController {
   }
 
   @Delete('sections/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete kepatuhan section' })
   async deleteSection(@Param('id', ParseIntPipe) id: number) {
-    await this.kepatuhanService.deleteSection(id);
-  }
-
-  @Get('indikators/sections-by-period')
-  @ApiOperation({ summary: 'Get sections with indicators by period' })
-  async getSectionsWithIndicatorsByPeriod(
-    @Query('year', new ParseIntPipe()) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return await this.kepatuhanService.getSectionsWithIndicatorsByPeriod(
-      year,
-      quarter,
-    );
+    return await this.kepatuhanService.deleteSection(id);
   }
 
   // ========== INDIKATOR ENDPOINTS ==========
@@ -81,6 +81,8 @@ export class KepatuhanController {
   @Post('indikators')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new kepatuhan indikator' })
+  @ApiResponse({ status: 201, description: 'Indikator created successfully' })
+  @ApiResponse({ status: 409, description: 'Indikator already exists' })
   async createIndikator(@Body() createDto: CreateKepatuhanDto) {
     return await this.kepatuhanService.createIndikator(createDto);
   }
@@ -131,15 +133,35 @@ export class KepatuhanController {
   }
 
   @Delete('indikators/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete kepatuhan indikator' })
   async deleteIndikator(@Param('id', ParseIntPipe) id: number) {
-    await this.kepatuhanService.deleteIndikator(id);
+    return await this.kepatuhanService.deleteIndikator(id);
+  }
+
+  // ========== COMPLEX QUERIES ENDPOINTS ==========
+
+  @Get('data/with-indicators')
+  @ApiOperation({
+    summary: 'Get sections with their indicators for a period',
+    description:
+      'Returns sections with nested indicators for a specific year and quarter',
+  })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsWithIndicatorsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.kepatuhanService.getSectionsWithIndicatorsByPeriod(
+      year,
+      quarter,
+    );
   }
 
   @Get('total-weighted')
-  @ApiOperation({ summary: 'Get total weighted by period' })
-  @ApiQuery({ name: 'year', required: true })
+  @ApiOperation({ summary: 'Get total weighted value by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
   async getTotalWeighted(
     @Query('year', ParseIntPipe) year: number,
@@ -149,18 +171,12 @@ export class KepatuhanController {
       year,
       quarter,
     );
-    return { total };
-  }
-
-  @Get('sections/period')
-  @ApiOperation({ summary: 'Get kepatuhan sections by period' })
-  @ApiQuery({ name: 'year', required: true, type: Number })
-  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
-  async getSectionsByPeriod(
-    @Query('year', ParseIntPipe) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    return await this.kepatuhanService.findSectionsByPeriod(year, quarter);
+    return {
+      success: true,
+      year,
+      quarter,
+      total,
+    };
   }
 
   @Get('periods')
@@ -182,12 +198,12 @@ export class KepatuhanController {
     }
   }
 
-  @Get('all-periods')
+  @Get('periods/with-counts')
   @ApiOperation({
-    summary: 'Get all periods with count',
-    description: 'Get periods with indicator counts',
+    summary: 'Get all periods with indicator counts',
+    description: 'Get periods with indicator counts for each period',
   })
-  async getAllPeriods() {
+  async getAllPeriodsWithCounts() {
     try {
       const periods = await this.kepatuhanService.getPeriods();
 
@@ -210,14 +226,38 @@ export class KepatuhanController {
         count: periodsWithCounts.length,
       };
     } catch (error) {
-      console.error('Error in getAllPeriods:', error);
+      console.error('Error in getAllPeriodsWithCounts:', error);
       throw error;
     }
   }
 
+  @Get('indikators/count')
+  @ApiOperation({ summary: 'Get indikator count by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getIndikatorCount(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    const count = await this.kepatuhanService.getIndikatorCountByPeriod(
+      year,
+      quarter,
+    );
+    return {
+      success: true,
+      year,
+      quarter,
+      count,
+    };
+  }
+
+  // ========== DUPLICATION ENDPOINT ==========
   @Post('indikators/:id/duplicate')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Duplicate indikator to new period' })
+  @ApiOperation({
+    summary: 'Duplicate indikator to new period',
+    description: 'Copy an existing indikator to a different period',
+  })
   async duplicateIndikator(
     @Param('id', ParseIntPipe) id: number,
     @Query('year', ParseIntPipe) year: number,

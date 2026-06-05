@@ -10,8 +10,10 @@ import {
 } from 'typeorm';
 import { KonsentrasiParameter } from './konsentrasi-produk-paramter.entity';
 
-@Entity('konsentrasi_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('konsentrasi_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class KonsentrasiNilai {
   @PrimaryGeneratedColumn()
   id: number;
@@ -50,7 +52,6 @@ export class KonsentrasiNilai {
     high?: string;
   };
 
-  // Foreign key ke Parameter
   @Column({ name: 'parameter_id' })
   parameterId: number;
 

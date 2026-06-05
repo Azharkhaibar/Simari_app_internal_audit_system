@@ -14,7 +14,14 @@ import {
   BadRequestException,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+  ApiParam,
+  ApiBody,
+} from '@nestjs/swagger';
 
 // PERBAIKAN: Import service dengan path yang benar
 import { KpmrStrategisService } from './strategis-kpmr-ojk.service';
@@ -36,7 +43,7 @@ import {
   FrontendPertanyaanResponseDto,
 } from './dto/strategis-kpmr.dto';
 
-@ApiTags('StrategisProdukKpmr')
+@ApiTags('StrategisKpmr')
 @Controller('kpmr-strategis')
 @UseInterceptors(ClassSerializerInterceptor)
 export class KpmrStrategisController {
@@ -47,10 +54,10 @@ export class KpmrStrategisController {
   @ApiOperation({ summary: 'Buat KPMR baru' })
   async create(
     @Body() createDto: CreateKpmrStrategisOjkDto,
-    @Request() req,
+    @Request() req, // ✅ TAMBAHKAN REQUEST
   ): Promise<FrontendKpmrResponseDto> {
-    const userId = req.user?.id || 'system';
-    return this.kpmrService.createKpmr(createDto, userId);
+    const userId = req.user?.id || 'system'; // ✅ AMBIL USER ID
+    return this.kpmrService.createKpmr(createDto, userId); // ✅ KIRIM 2 PARAMETER!
   }
 
   @Get()
@@ -405,12 +412,13 @@ export class KpmrStrategisController {
   @Get(':id/validate')
   @ApiOperation({ summary: 'Validasi data KPMR' })
   async validateKpmr(
-    @Param('id') id: string,
+    @Param('id') id: string, // ✅ TERIMA ID, BUKAN YEAR/QUARTER!
   ): Promise<{ isValid: boolean; errors: string[]; warnings: string[] }> {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) {
       throw new BadRequestException('ID harus berupa angka');
     }
+
 
     return this.kpmrService.validateKpmrData(idNum);
   }
@@ -423,6 +431,7 @@ export class KpmrStrategisController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
+    // ✅ PANGGIL METHOD YANG BARU
     return this.kpmrService.getKpmrStatistics(idNum);
   }
 }

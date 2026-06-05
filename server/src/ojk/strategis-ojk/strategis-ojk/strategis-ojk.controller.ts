@@ -23,35 +23,22 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { StrategisOjkService } from './strategis-ojk.service';
-// import {
-//   CreateStrategisOjkDto,
-//   UpdateStrategisOjkDto,
-//   CreateParameterDto,
-//   UpdateParameterDto,
-//   CreateNilaiDto,
-//   UpdateNilaiDto,
-//   ReorderParametersDto,
-//   ReorderNilaiDto,
-//   UpdateSummaryDto,
-//   ImportExportDto,
-// } from './dto/strategis-ojk.dto';
-
+import { StrategisService } from './strategis-ojk.service';
 import {
-  CreateStrategisOjkDto,
-  CreateNilaiDto,
+  CreateStrategisDto,
+  UpdateStrategisDto,
   CreateParameterDto,
-  UpdateNilaiDto,
-  UpdateStrategisOjkDto,
   UpdateParameterDto,
-  UpdateSummaryDto,
-  ReorderNilaiDto,
+  CreateNilaiDto,
+  UpdateNilaiDto,
   ReorderParametersDto,
+  ReorderNilaiDto,
+  UpdateSummaryDto,
   ImportExportDto,
 } from './dto/strategis-inherent.dto';
 
-@ApiTags('Strategis OJK')
-@Controller('strategis-ojk')
+@ApiTags('Strategis')
+@Controller('strategis')
 @UseInterceptors(ClassSerializerInterceptor)
 @UsePipes(
   new ValidationPipe({
@@ -60,13 +47,13 @@ import {
     forbidNonWhitelisted: true,
   }),
 )
-export class StrategisOjkController {
-  constructor(private readonly strategisService: StrategisOjkService) {}
+export class StrategisController {
+  constructor(private readonly strategisService: StrategisService) {}
 
   // === CRUD UTAMA ===
 
   @Get()
-  @ApiOperation({ summary: 'Get all Strategis OJK data or by year/quarter' })
+  @ApiOperation({ summary: 'Get all Strategis data or by year/quarter' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
@@ -74,23 +61,38 @@ export class StrategisOjkController {
     @Query('year') year?: number,
     @Query('quarter') quarter?: number,
   ) {
+    // Jika ada parameter year & quarter, cari spesifik
     if (year && quarter) {
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
       const result = await this.strategisService.findByYearQuarter(
-        year,
-        quarter,
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      // ✅ JANGAN throw error. Return response 200 dengan data null.
+      return {
+        success: true,
+        data: result || null, // null jika tidak ditemukan
+        exists: !!result, // flag untuk frontend
+        message: result
+          ? `Data strategis ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data strategis belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.strategisService.getAll();
+
+    // Jika tidak ada parameter, return semua data
+    const allData = await this.strategisService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Get active Strategis OJK data' })
+  @ApiOperation({ summary: 'Get active Strategis data' })
   @ApiResponse({
     status: 200,
     description: 'Active data retrieved successfully',
@@ -105,24 +107,12 @@ export class StrategisOjkController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Strategis OJK by ID' })
+  @ApiOperation({ summary: 'Get Strategis by ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    // PERBAIKAN: Cari langsung berdasarkan ID dengan method baru
-    const activeData = await this.strategisService.findActive();
-
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Gunakan year dan quarter dari active data
-    const result = await this.strategisService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const result = await this.strategisService.findById(id);
     if (!result) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
@@ -130,24 +120,24 @@ export class StrategisOjkController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new Strategis OJK data' })
-  @ApiBody({ type: CreateStrategisOjkDto })
+  @ApiOperation({ summary: 'Create new Strategis data' })
+  @ApiBody({ type: CreateStrategisDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(@Body() createDto: CreateStrategisOjkDto, @Request() req) {
+  async create(@Body() createDto: CreateStrategisDto, @Request() req) {
     const userId = req.user?.id || 'system';
     return this.strategisService.create(createDto, userId);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update Strategis OJK data' })
+  @ApiOperation({ summary: 'Update Strategis data' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdateStrategisOjkDto })
+  @ApiBody({ type: UpdateStrategisDto })
   @ApiResponse({ status: 200, description: 'Data updated successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateStrategisOjkDto,
+    @Body() updateDto: UpdateStrategisDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
@@ -185,7 +175,7 @@ export class StrategisOjkController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete Strategis OJK data' })
+  @ApiOperation({ summary: 'Delete Strategis data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data deleted successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
@@ -196,14 +186,13 @@ export class StrategisOjkController {
   // === OPERASI PARAMETER ===
 
   @Get(':id/parameters')
-  @ApiOperation({ summary: 'Get all parameters for specific Strategis OJK' })
+  @ApiOperation({ summary: 'Get all parameters for specific Strategis' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
     status: 200,
     description: 'Parameters retrieved successfully',
   })
   async getParameters(@Param('id', ParseIntPipe) strategisId: number) {
-    // PERBAIKAN: Cari strategis berdasarkan ID, bukan year/quarter
     const strategis = await this.getStrategisByIdOrThrow(strategisId);
     return strategis.parameters || [];
   }
@@ -313,7 +302,6 @@ export class StrategisOjkController {
     @Param('id', ParseIntPipe) strategisId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
   ) {
-    // PERBAIKAN: Cari strategis berdasarkan ID
     const strategis = await this.getStrategisByIdOrThrow(strategisId);
 
     const parameter = strategis.parameters?.find((p) => p.id === parameterId);
@@ -464,6 +452,18 @@ export class StrategisOjkController {
     return this.strategisService.getReferences(type);
   }
 
+  // === VALIDATION ENDPOINTS ===
+
+  @Get(':id/validate')
+  @ApiOperation({ summary: 'Validate model terstruktur' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Validation completed' })
+  async validateModelTerstruktur(
+    @Param('id', ParseIntPipe) strategisId: number,
+  ) {
+    return this.strategisService.validateModelTerstruktur(strategisId);
+  }
+
   // === UTILITY ENDPOINTS ===
 
   @Get('check/:year/:quarter')
@@ -481,24 +481,8 @@ export class StrategisOjkController {
 
   // === HELPER METHODS ===
 
-  /**
-   * Helper method untuk mendapatkan strategis by ID
-   * Karena entity relasional, kita perlu mencari berdasarkan year/quarter dari strategis aktif
-   */
   private async getStrategisByIdOrThrow(strategisId: number) {
-    // Cari berdasarkan ID langsung (jika service punya method findById)
-    // Atau gunakan active data
-
-    const activeData = await this.strategisService.findActive();
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Cari data berdasarkan year/quarter dari active data
-    const strategis = await this.strategisService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
+    const strategis = await this.strategisService.findById(strategisId);
 
     if (!strategis) {
       throw new NotFoundException(
@@ -506,27 +490,6 @@ export class StrategisOjkController {
       );
     }
 
-    // Validasi bahwa ID yang diminta sesuai dengan ID yang ditemukan
-    if (strategis.id !== strategisId) {
-      throw new NotFoundException(
-        `Data dengan ID ${strategisId} tidak ditemukan`,
-      );
-    }
-
     return strategis;
-  }
-
-  /**
-   * Opsional: Method alternatif jika service punya findById
-   */
-  private async getStrategisByIdDirect(strategisId: number) {
-    // Jika service memiliki method findById, gunakan ini
-    // Tapi service kita saat ini tidak punya, jadi perlu ditambahkan
-
-    // Contoh jika service punya method findById:
-    // return await this.strategisService.findById(strategisId);
-
-    // Untuk sekarang, kita gunakan workaround dengan active data
-    return this.getStrategisByIdOrThrow(strategisId);
   }
 }

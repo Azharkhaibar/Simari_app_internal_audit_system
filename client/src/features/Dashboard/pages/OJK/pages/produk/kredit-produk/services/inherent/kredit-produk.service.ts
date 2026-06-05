@@ -10,7 +10,7 @@ export interface KreditProdukOjkEntity {
   year: number;
   quarter: number;
   isActive: boolean;
-  parameters?: ParameterEntity[];
+  parameters?: KreditParameterEntity[];
   summary?: {
     totalWeighted?: number;
     summaryBg?: string;
@@ -27,7 +27,7 @@ export interface KreditProdukOjkEntity {
   notes?: string;
 }
 
-export interface ParameterEntity {
+export interface KreditParameterEntity {
   id: number;
   nomor?: string;
   judul: string;
@@ -38,14 +38,14 @@ export interface ParameterEntity {
     jenis?: string;
     underlying?: string[];
   };
-  nilaiList?: NilaiEntity[];
+  nilaiList?: KreditNilaiEntity[];
   orderIndex: number;
   kreditProdukOjkId: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface NilaiEntity {
+export interface KreditNilaiEntity {
   id: number;
   nomor?: string;
   judul: {
@@ -199,13 +199,11 @@ export interface ReferenceItem {
 }
 
 // =============================================
-// MAIN SERVICE CLASS - PERBAIKAN LENGKAP
+// MAIN SERVICE CLASS
 // =============================================
 
 export class KreditProdukService {
-  private baseUrl = '/kredit-produk-ojk';
-
-  // TAMBAH FUNGSI BARU
+  private baseUrl = '/kredit';
 
   async findOrCreate(
     year: number,
@@ -216,15 +214,13 @@ export class KreditProdukService {
     isNew: boolean;
     message: string;
   }> {
-    const cacheKey = `findOrCreate-${year}-Q${quarter}`;
     console.log(`[Service] findOrCreate: ${year}-Q${quarter}`);
 
     try {
-      // 1. Cari data yang sudah ada
       const existingData = await this.findByYearQuarter(year, quarter);
 
       if (existingData) {
-        console.log(`[Service] findOrCreate: Data found, ID: ${existingData.id}`);
+        console.log(`[Service] findOrCreate: Found existing ID=${existingData.id}`);
         return {
           success: true,
           data: existingData,
@@ -233,21 +229,18 @@ export class KreditProdukService {
         };
       }
 
-      // 2. Jika tidak ada, buat data baru
       console.log(`[Service] findOrCreate: Creating new data`);
-
-      const createDto: CreateKreditProdukInherentDto = {
+      const newData = await this.create({
         year,
         quarter,
         isActive: true,
         createdBy: 'system',
         version: '1.0.0',
-      };
+      });
 
-      const newData = await this.create(createDto);
+      if (!newData?.parameters) newData.parameters = [];
 
-      console.log(`[Service] findOrCreate: New data created, ID: ${newData.id}`);
-
+      console.log(`[Service] findOrCreate: Created ID=${newData.id}`);
       return {
         success: true,
         data: newData,
@@ -255,37 +248,24 @@ export class KreditProdukService {
         message: 'Data berhasil dibuat',
       };
     } catch (error: any) {
-      console.error('[Service] findOrCreate error:', error);
+      console.error('[Service] findOrCreate error:', error.message);
 
-      // 3. Fallback: Coba lagi dengan retry logic
       try {
-        console.log('[Service] findOrCreate: Retrying...');
         const retryData = await this.findByYearQuarter(year, quarter);
-
         if (retryData) {
-          return {
-            success: true,
-            data: retryData,
-            isNew: false,
-            message: 'Data ditemukan pada retry',
-          };
+          return { success: true, data: retryData, isNew: false, message: 'Data ditemukan (retry)' };
         }
-      } catch (retryError) {
-        console.error('[Service] findOrCreate retry failed:', retryError);
-      }
+      } catch {}
 
       return {
         success: false,
         data: null,
         isNew: false,
-        message: error.message || 'Gagal memuat atau membuat data',
+        message: error.message || 'Gagal memuat data',
       };
     }
   }
 
-  /**
-   * Method untuk memastikan data tersedia sebelum operasi
-   */
   async ensureDataExists(year: number, quarter: number): Promise<KreditProdukOjkEntity> {
     console.log(`[Service] ensureDataExists: ${year}-Q${quarter}`);
 
@@ -295,7 +275,6 @@ export class KreditProdukService {
       throw new Error(`Gagal memastikan data tersedia: ${result.message}`);
     }
 
-    // Pastikan parameters array
     if (!Array.isArray(result.data.parameters)) {
       result.data.parameters = [];
     }
@@ -303,22 +282,19 @@ export class KreditProdukService {
     return result.data;
   }
 
-  // TAMBAHKAN SETELAH METODE getFormattedData()
-
-  /**
-   * Method untuk load data dengan auto-create jika tidak ada
-   */
   async loadOrCreateData(year: number, quarter: number): Promise<KreditProdukOjkEntity> {
     console.log(`[Service] loadOrCreateData: ${year}-Q${quarter}`);
-    return this.ensureDataExists(year, quarter);
+
+    const result = await this.findOrCreate(year, quarter);
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Gagal memuat data');
+    }
+
+    return result.data;
   }
 
-  // FUNGSI BARU HOOK
-
-  /**
-   * Helper untuk format data ke frontend - PERBAIKAN UTAMA
-   */
-  private formatToFrontend(entity: KreditProdukOjkEntity | null): any[] {
+  public formatToFrontend(entity: KreditProdukOjkEntity | null): any[] {
     console.log('[Service] formatToFrontend - Input entity:', {
       entity,
       entityType: typeof entity,
@@ -331,13 +307,11 @@ export class KreditProdukService {
       return [];
     }
 
-    // PERBAIKAN: Pastikan parameters selalu array
     const parameters = Array.isArray(entity.parameters) ? entity.parameters : [];
 
     console.log(`[Service] formatToFrontend: Processing ${parameters.length} parameters`);
 
     const result = parameters.map((param, index) => {
-      // PERBAIKAN: Pastikan nilaiList selalu array
       const nilaiList = Array.isArray(param.nilaiList) ? param.nilaiList : [];
 
       const formattedParam = {
@@ -352,7 +326,6 @@ export class KreditProdukService {
           underlying: [],
         },
         orderIndex: param.orderIndex || index,
-        // PERBAIKAN: Format nilaiList dengan safety checks
         nilaiList: nilaiList.map((nilai, idx) => ({
           id: nilai.id?.toString() || `temp-nilai-${Date.now()}-${idx}`,
           nomor: nilai.nomor || '',
@@ -379,7 +352,6 @@ export class KreditProdukService {
           },
           orderIndex: nilai.orderIndex || idx,
         })),
-        // Metadata dari inherent
         metadata: {
           inherentId: entity.id,
           year: entity.year,
@@ -403,9 +375,6 @@ export class KreditProdukService {
     return result;
   }
 
-  /**
-   * Helper untuk log error - PERBAIKAN
-   */
   private handleError(error: any, operation: string, url?: string): never {
     const errorDetails = {
       operation,
@@ -420,7 +389,6 @@ export class KreditProdukService {
 
     console.error(`[KreditProdukService] Error in ${operation}:`, errorDetails);
 
-    // Throw error yang lebih informatif
     let errorMessage = `Gagal melakukan operasi ${operation}`;
 
     if (error.response?.status === 404) {
@@ -436,9 +404,6 @@ export class KreditProdukService {
     throw new Error(errorMessage);
   }
 
-  /**
-   * Helper untuk debug API calls
-   */
   private logApiCall(method: string, url: string, params?: any, data?: any) {
     console.log(`[Service] API ${method.toUpperCase()}:`, {
       url,
@@ -449,7 +414,7 @@ export class KreditProdukService {
   }
 
   // =============================================
-  // CRUD UTAMA - PERBAIKAN LENGKAP
+  // CRUD UTAMA
   // =============================================
 
   async findActive(): Promise<KreditProdukOjkEntity | null> {
@@ -470,7 +435,6 @@ export class KreditProdukService {
         return null;
       }
 
-      // PERBAIKAN: Pastikan parameters selalu array
       if (!Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
@@ -503,51 +467,38 @@ export class KreditProdukService {
 
       console.log('[Service] findByYearQuarter - Response:', {
         status: response.status,
-        dataType: Array.isArray(response.data) ? 'array' : typeof response.data,
-        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A',
-        fullUrl: `${url}?year=${year}&quarter=${quarter}`,
+        hasSuccess: response.data?.success !== undefined,
+        hasData: !!response.data?.data,
       });
 
-      if (!response.data) {
-        console.log('[Service] findByYearQuarter: No data returned');
-        return null;
+      if (response.data?.success !== undefined) {
+        const result = response.data.data;
+
+        if (!result) {
+          console.log('[Service] findByYearQuarter: Data not found (null from backend)');
+          return null;
+        }
+
+        if (!Array.isArray(result.parameters)) {
+          result.parameters = [];
+        }
+
+        return result;
       }
 
       let data = response.data;
-
-      // PERBAIKAN: Handle berbagai kemungkinan response format
-      // 1. Jika response adalah array, ambil yang pertama
       if (Array.isArray(data)) {
-        console.log('[Service] findByYearQuarter: Response is array, taking first item');
         data = data.length > 0 ? data[0] : null;
       }
+      if (!data) return null;
+      if (!Array.isArray(data.parameters)) data.parameters = [];
 
-      // 2. Jika masih null/undefined
-      if (!data) {
-        console.log('[Service] findByYearQuarter: No data found after processing');
-        return null;
-      }
-
-      // 3. Pastikan parameters adalah array
-      if (!Array.isArray(data.parameters)) {
-        console.log('[Service] findByYearQuarter: Parameters not array, converting to empty array');
-        data.parameters = [];
-      }
-
-      console.log('[Service] findByYearQuarter: Returning data with', data.parameters.length, 'parameters');
       return data;
     } catch (error: any) {
-      console.log('[Service] findByYearQuarter - Error:', {
-        status: error.response?.status,
-        message: error.message,
-        url: `${url}?year=${year}&quarter=${quarter}`,
-      });
-
       if (error.response?.status === 404) {
         console.log('[Service] findByYearQuarter: 404 - Data not found');
         return null;
       }
-
       this.handleError(error, 'findByYearQuarter', `${url}?year=${year}&quarter=${quarter}`);
     }
   }
@@ -563,13 +514,11 @@ export class KreditProdukService {
 
       let data = response.data;
 
-      // PERBAIKAN: Pastikan selalu return array
       if (!Array.isArray(data)) {
         console.log('[Service] getAll: Converting non-array response to array');
         data = data ? [data] : [];
       }
 
-      // PERBAIKAN: Pastikan setiap item memiliki parameters array
       const result = data.map((item: any, index: number) => ({
         ...item,
         parameters: Array.isArray(item.parameters) ? item.parameters : [],
@@ -589,7 +538,6 @@ export class KreditProdukService {
     try {
       const response = await api_kredit_produk.get<KreditProdukOjkEntity>(url);
 
-      // PERBAIKAN: Pastikan parameters selalu array
       if (response.data && !Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
@@ -661,20 +609,15 @@ export class KreditProdukService {
   }
 
   // =============================================
-  // OPERASI PARAMETER - PERBAIKAN
+  // OPERASI PARAMETER
   // =============================================
 
   async addParameter(inherentId: number, dto: CreateParameterDto): Promise<KreditProdukOjkEntity> {
     const url = `${this.baseUrl}/${inherentId}/parameters`;
 
-    console.log('[Service] addParameter:', {
-      url,
-      inherentId,
-      dto,
-    });
+    console.log('[Service] addParameter:', { url, inherentId, dto });
 
     try {
-      // Pastikan judul adalah string
       const payload: CreateParameterDto = {
         ...dto,
         judul: typeof dto.judul === 'string' ? dto.judul.trim() : String(dto.judul || '').trim(),
@@ -685,14 +628,11 @@ export class KreditProdukService {
 
       const response = await api_kredit_produk.post<KreditProdukOjkEntity>(url, payload);
 
-      // PERBAIKAN: Pastikan response memiliki parameters array
       if (response.data && !Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
 
-      console.log('[Service] addParameter - Success:', {
-        newParameterId: response.data.id,
-      });
+      console.log('[Service] addParameter - Success:', { newParameterId: response.data.id });
 
       return response.data;
     } catch (error: any) {
@@ -711,7 +651,6 @@ export class KreditProdukService {
     const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}`;
 
     try {
-      // Format payload
       const payload: UpdateParameterDto = { ...dto };
 
       if (dto.judul !== undefined) {
@@ -774,7 +713,6 @@ export class KreditProdukService {
     const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai`;
 
     try {
-      // Pastikan judul.text adalah string
       const payload: CreateNilaiDto = {
         ...dto,
         judul: {
@@ -797,7 +735,6 @@ export class KreditProdukService {
     const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}`;
 
     try {
-      // Format payload
       const payload: UpdateNilaiDto = { ...dto };
 
       if (dto.judul?.text !== undefined) {
@@ -902,40 +839,29 @@ export class KreditProdukService {
   }
 
   // =============================================
-  // UTILITY METHODS - PERBAIKAN UTAMA
+  // UTILITY METHODS
   // =============================================
 
   async checkExists(year: number, quarter: number): Promise<{ exists: boolean; data: KreditProdukOjkEntity | null }> {
     try {
       console.log(`[Service] checkExists for ${year}-Q${quarter}`);
       const data = await this.findByYearQuarter(year, quarter);
-      return {
-        exists: !!data,
-        data,
-      };
+      return { exists: !!data, data };
     } catch (error: any) {
       console.log('[Service] checkExists error:', error.message);
-      return {
-        exists: false,
-        data: null,
-      };
+      return { exists: false, data: null };
     }
   }
 
-  /**
-   * PERBAIKAN UTAMA: Method yang lebih aman untuk load data
-   */
   async loadOrCreate(year: number, quarter: number): Promise<KreditProdukOjkEntity> {
     console.log(`[Service] loadOrCreate: ${year}-Q${quarter}`);
 
     try {
-      // 1. Cari data yang sudah ada
       let data = await this.findByYearQuarter(year, quarter);
 
       if (data) {
         console.log(`[Service] loadOrCreate: Found existing data, ID: ${data.id}`);
 
-        // PERBAIKAN: Pastikan parameters selalu array
         if (!Array.isArray(data.parameters)) {
           data.parameters = [];
         }
@@ -943,7 +869,6 @@ export class KreditProdukService {
         return data;
       }
 
-      // 2. Buat data baru
       console.log(`[Service] loadOrCreate: Creating new data`);
 
       const createDto: CreateKreditProdukInherentDto = {
@@ -955,7 +880,6 @@ export class KreditProdukService {
 
       data = await this.create(createDto);
 
-      // PERBAIKAN: Pastikan parameters array
       if (!Array.isArray(data.parameters)) {
         data.parameters = [];
       }
@@ -970,13 +894,12 @@ export class KreditProdukService {
         stack: error.stack,
       });
 
-      // Buat data fallback jika gagal
       const fallbackData: KreditProdukOjkEntity = {
-        id: -1, // Temporary ID
+        id: -1,
         year,
         quarter,
         isActive: true,
-        parameters: [], // Pastikan array kosong
+        parameters: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -986,9 +909,6 @@ export class KreditProdukService {
     }
   }
 
-  /**
-   * PERBAIKAN UTAMA: Method yang selalu return array untuk frontend
-   */
   async getFormattedData(year?: number, quarter?: number): Promise<any[]> {
     console.log(`[Service] getFormattedData: year=${year}, quarter=${quarter}`);
 
@@ -1001,7 +921,6 @@ export class KreditProdukService {
         data = await this.findActive();
       }
 
-      // PERBAIKAN: Pastikan selalu return array
       const result = this.formatToFrontend(data);
 
       console.log(`[Service] getFormattedData: Returning ${result.length} parameters`);
@@ -1013,14 +932,10 @@ export class KreditProdukService {
         quarter,
       });
 
-      // PERBAIKAN: Return empty array jika error
       return [];
     }
   }
 
-  /**
-   * Format judul dari object ke string untuk parameter
-   */
   formatParameterJudul(judul: any): string {
     if (!judul) return '';
 
@@ -1035,9 +950,6 @@ export class KreditProdukService {
     return String(judul).trim();
   }
 
-  /**
-   * Format judul dari string ke object untuk nilai
-   */
   formatNilaiJudul(judul: any): CreateNilaiDto['judul'] {
     if (!judul) {
       return {
@@ -1067,7 +979,6 @@ export class KreditProdukService {
       };
     }
 
-    // Jika sudah object
     return {
       type: judul.type || 'Tanpa Faktor',
       text: judul.text || '',
@@ -1081,14 +992,9 @@ export class KreditProdukService {
     };
   }
 
-  /**
-   * Validate API connection
-   */
   async validateConnection(): Promise<boolean> {
     try {
-      const response = await api_kredit_produk.get(this.baseUrl, {
-        timeout: 5000,
-      });
+      const response = await api_kredit_produk.get(this.baseUrl, { timeout: 5000 });
       return response.status === 200;
     } catch (error) {
       console.error('[Service] API connection failed:', error);
@@ -1097,6 +1003,5 @@ export class KreditProdukService {
   }
 }
 
-// Export singleton instance
 export const kreditProdukService = new KreditProdukService();
 export default kreditProdukService;

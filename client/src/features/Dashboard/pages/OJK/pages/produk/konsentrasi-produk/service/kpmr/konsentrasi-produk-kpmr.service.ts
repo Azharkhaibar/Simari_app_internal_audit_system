@@ -1,5 +1,6 @@
-// services/konsentrasi-produk-kpmr.service.ts
 import api_konsentrasi_produk from "../konsentrasi-produk-api.service";
+
+// services/kpmr/konsentrasi-produk-kpmr.service.ts
 
 // ========== DTO Interfaces ==========
 export interface KpmrSkorDto {

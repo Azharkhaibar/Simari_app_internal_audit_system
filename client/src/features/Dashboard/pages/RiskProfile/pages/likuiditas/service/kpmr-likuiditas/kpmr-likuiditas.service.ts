@@ -1,5 +1,4 @@
 import api_likuiditas from '../api-likuiditas.service';
-
 // ============================================================================
 // INTERFACES - Sesuai dengan Entity Backend (dengan Year) - HARD DELETE ONLY
 // ============================================================================
@@ -196,8 +195,10 @@ class KPMRLikuiditasApiService {
   }
 
   async getAllAspects(year?: number): Promise<KPMRLikuiditasAspect[]> {
-    console.log('📥 GET from: /kpmr-likuiditas/aspects', { year });
-    const response = await api_likuiditas.get<KPMRLikuiditasAspect[]>('/kpmr-likuiditas/aspects', { params: { year } });
+    let url = '/kpmr-likuiditas/aspects';
+    if (year) url += `?year=${year}`;
+    console.log('📥 GET from:', url);
+    const response = await api_likuiditas.get<KPMRLikuiditasAspect[]>(url);
     return response.data;
   }
 
@@ -213,6 +214,7 @@ class KPMRLikuiditasApiService {
     return response.data;
   }
 
+  // HARD DELETE
   async deleteAspect(id: number): Promise<DeleteResponse> {
     console.log(`🗑️ DELETE (hard) from: /kpmr-likuiditas/aspects/${id}`);
     const response = await api_likuiditas.delete<DeleteResponse>(`/kpmr-likuiditas/aspects/${id}`);
@@ -227,14 +229,18 @@ class KPMRLikuiditasApiService {
   }
 
   async getAllQuestions(year?: number): Promise<KPMRLikuiditasQuestion[]> {
-    console.log('📥 GET from: /kpmr-likuiditas/questions', { year });
-    const response = await api_likuiditas.get<KPMRLikuiditasQuestion[]>('/kpmr-likuiditas/questions', { params: { year } });
+    let url = '/kpmr-likuiditas/questions';
+    if (year) url += `?year=${year}`;
+    console.log('📥 GET from:', url);
+    const response = await api_likuiditas.get<KPMRLikuiditasQuestion[]>(url);
     return response.data;
   }
 
   async getQuestionsByAspect(aspekNo: string, year?: number): Promise<KPMRLikuiditasQuestion[]> {
-    console.log('📥 GET from: /kpmr-likuiditas/questions/aspect/${aspekNo}', { year });
-    const response = await api_likuiditas.get<KPMRLikuiditasQuestion[]>(`/kpmr-likuiditas/questions/aspect/${aspekNo}`, { params: { year } });
+    let url = `/kpmr-likuiditas/questions/aspect/${aspekNo}`;
+    if (year) url += `?year=${year}`;
+    console.log('📥 GET from:', url);
+    const response = await api_likuiditas.get<KPMRLikuiditasQuestion[]>(url);
     return response.data;
   }
 
@@ -250,6 +256,7 @@ class KPMRLikuiditasApiService {
     return response.data;
   }
 
+  // HARD DELETE
   async deleteQuestion(id: number): Promise<DeleteResponse> {
     console.log(`🗑️ DELETE (hard) from: /kpmr-likuiditas/questions/${id}`);
     const response = await api_likuiditas.delete<DeleteResponse>(`/kpmr-likuiditas/questions/${id}`);
@@ -287,6 +294,7 @@ class KPMRLikuiditasApiService {
     return response.data;
   }
 
+  // HARD DELETE definition with scores
   async deleteDefinitionPermanent(definitionId: number, year: number): Promise<DeleteResponse> {
     console.log(`🗑️ DELETE to: /kpmr-likuiditas/definition/${definitionId}/${year}`);
     const response = await api_likuiditas.delete<DeleteResponse>(`/kpmr-likuiditas/definition/${definitionId}/${year}`);
@@ -307,8 +315,10 @@ class KPMRLikuiditasApiService {
   }
 
   async getScoresByPeriod(year: number, quarter?: string): Promise<KPMRLikuiditasScore[]> {
-    console.log('📥 GET from: /kpmr-likuiditas/scores/period', { year, quarter });
-    const response = await api_likuiditas.get<KPMRLikuiditasScore[]>('/kpmr-likuiditas/scores/period', { params: { year, quarter } });
+    let url = `/kpmr-likuiditas/scores/period?year=${year}`;
+    if (quarter) url += `&quarter=${quarter}`;
+    console.log('📥 GET from:', url);
+    const response = await api_likuiditas.get<KPMRLikuiditasScore[]>(url);
     return response.data;
   }
 
@@ -330,6 +340,7 @@ class KPMRLikuiditasApiService {
     return response.data;
   }
 
+  // HARD DELETE
   async deleteScore(id: number): Promise<DeleteResponse> {
     console.log(`🗑️ DELETE (hard) from: /kpmr-likuiditas/scores/${id}`);
     const response = await api_likuiditas.delete<DeleteResponse>(`/kpmr-likuiditas/scores/${id}`);
@@ -349,9 +360,16 @@ class KPMRLikuiditasApiService {
     return response.data;
   }
 
-  async searchKPMR(year?: number, query?: string, aspekNo?: string): Promise<KPMRLikuiditasDefinition[]> {
-    console.log('📥 GET from: /kpmr-likuiditas/search', { year, query, aspekNo });
-    const response = await api_likuiditas.get<KPMRLikuiditasDefinition[]>('/kpmr-likuiditas/search', { params: { year, query, aspekNo } });
+  async searchKPMR(year?: number, query?: string, asksNo?: string): Promise<KPMRLikuiditasDefinition[]> {
+    let url = '/kpmr-likuiditas/search';
+    const params = new URLSearchParams();
+    if (year) params.append('year', String(year));
+    if (query) params.append('query', query);
+    if (asksNo) params.append('aspekNo', asksNo);
+
+    if (params.toString()) url += `?${params.toString()}`;
+    console.log('📥 GET from:', url);
+    const response = await api_likuiditas.get<KPMRLikuiditasDefinition[]>(url);
     return response.data;
   }
 

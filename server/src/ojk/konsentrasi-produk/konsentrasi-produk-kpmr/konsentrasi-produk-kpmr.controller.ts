@@ -1,5 +1,3 @@
-// src/ojk/konsentrasi/konsentrasi-kpmr/konsentrasi-produk-kpmr.controller.ts
-
 import {
   Controller,
   Get,
@@ -26,7 +24,7 @@ import {
 } from '@nestjs/swagger';
 
 // PERBAIKAN: Import service dengan path yang benar
-import { KpmrKonsentrasiService } from './konsentrasi-produk-kpmr.service';
+import { KonsentrasiKpmrService } from './konsentrasi-produk-kpmr.service';
 
 import {
   CreateKpmrKonsentrasiOjkDto,
@@ -48,8 +46,8 @@ import {
 @ApiTags('KonsentrasiKpmr')
 @Controller('kpmr-konsentrasi')
 @UseInterceptors(ClassSerializerInterceptor)
-export class KpmrKonsentrasiController {
-  constructor(private readonly kpmrService: KpmrKonsentrasiService) {}
+export class KonsentrasiKpmrController {
+  constructor(private readonly kpmrService: KonsentrasiKpmrService) {}
 
   // ========== KPMR ENDPOINTS ==========
   @Post()
@@ -421,7 +419,7 @@ export class KpmrKonsentrasiController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
-    // ✅ PANGGIL METHOD VALIDATE DENGAN ID
+
     return this.kpmrService.validateKpmrData(idNum);
   }
 

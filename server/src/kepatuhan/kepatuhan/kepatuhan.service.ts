@@ -6,17 +6,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Like, Not } from 'typeorm';
+import { Repository, Like, Not } from 'typeorm';
 import { KepatuhanSection } from './entities/kepatuhan-section.entity';
 import {
   Kepatuhan,
   CalculationMode,
   Quarter,
 } from './entities/kepatuhan.entity';
-import { CreateKepatuhanSectionDto } from './dto/create-kepatuhan-section.dto';
-import { UpdateKepatuhanSectionDto } from './dto/update-kepatuhan-section.dto';
 import { CreateKepatuhanDto } from './dto/create-kepatuhan.dto';
+import { UpdateKepatuhanSectionDto } from './dto/update-kepatuhan-section.dto';
 import { UpdateKepatuhanDto } from './dto/update-kepatuhan.dto';
+import { CreateKepatuhanSectionDto } from './dto/create-kepatuhan-section.dto';
 
 @Injectable()
 export class KepatuhanService {
@@ -34,7 +34,6 @@ export class KepatuhanService {
     createDto: CreateKepatuhanSectionDto,
     createdBy?: string,
   ): Promise<KepatuhanSection> {
-    // 1. Cek apakah ada data yang sudah dihapus dengan no+parameter+year+quarter yang sama
     const deletedSection = await this.kepatuhanSectionRepository.findOne({
       where: {
         no: createDto.no,
@@ -45,7 +44,6 @@ export class KepatuhanService {
       },
     });
 
-    // 2. Jika ada data yang sudah dihapus, REACTIVATE data tersebut
     if (deletedSection) {
       console.log(
         `🔄 Reactivating deleted section: ${deletedSection.no} - ${deletedSection.parameter}`,
@@ -61,14 +59,12 @@ export class KepatuhanService {
         createDto.sortOrder || deletedSection.sortOrder;
 
       if (createdBy) {
-        deletedSection['updatedBy'] = createdBy;
-        deletedSection['updatedAt'] = new Date();
+        deletedSection.updatedBy = createdBy;
       }
 
       return await this.kepatuhanSectionRepository.save(deletedSection);
     }
 
-    // 3. Cek duplikasi hanya untuk data yang TIDAK dihapus
     const existingSection = await this.kepatuhanSectionRepository.findOne({
       where: {
         no: createDto.no,
@@ -85,7 +81,6 @@ export class KepatuhanService {
       );
     }
 
-    // 4. Buat baru
     const sectionData: Partial<KepatuhanSection> = {
       no: createDto.no,
       parameter: createDto.parameter,
@@ -99,7 +94,7 @@ export class KepatuhanService {
     };
 
     if (createdBy) {
-      sectionData['createdBy'] = createdBy;
+      sectionData.createdBy = createdBy;
     }
 
     const section = this.kepatuhanSectionRepository.create(sectionData);
@@ -121,15 +116,11 @@ export class KepatuhanService {
 
   async findSectionById(id: number): Promise<KepatuhanSection> {
     try {
-      console.log(`🔍 [SERVICE] Finding section by ID: ${id}`);
-
       const section = await this.kepatuhanSectionRepository
         .createQueryBuilder('section')
         .where('section.id = :id', { id })
         .andWhere('section.is_deleted = false')
         .getOne();
-
-      console.log(`🔍 [SERVICE] Found section:`, section);
 
       if (!section) {
         throw new NotFoundException(`Section dengan ID ${id} tidak ditemukan`);
@@ -200,13 +191,15 @@ export class KepatuhanService {
     if (updateDto.quarter !== undefined) section.quarter = updateDto.quarter;
 
     if (updatedBy) {
-      section['updatedBy'] = updatedBy;
+      section.updatedBy = updatedBy;
     }
 
     return await this.kepatuhanSectionRepository.save(section);
   }
 
-  async deleteSection(id: number): Promise<void> {
+  async deleteSection(
+    id: number,
+  ): Promise<{ success: boolean; message: string }> {
     const section = await this.kepatuhanSectionRepository.findOne({
       where: { id },
     });
@@ -216,7 +209,7 @@ export class KepatuhanService {
     }
 
     const countIndikator = await this.kepatuhanRepository.count({
-      where: { sectionId: id },
+      where: { sectionId: id, isDeleted: false },
     });
 
     if (countIndikator > 0) {
@@ -225,11 +218,16 @@ export class KepatuhanService {
       );
     }
 
-    // ✅ HARD DELETE SAJA
-    await this.kepatuhanSectionRepository.delete(id);
+    section.isDeleted = true;
+    await this.kepatuhanSectionRepository.save(section);
+
+    return {
+      success: true,
+      message: `Section "${section.parameter}" berhasil dihapus`,
+    };
   }
 
-  // ========== KEPATUHAN (INDIKATOR) SERVICES ==========
+  // ========== INDIKATOR SERVICES ==========
 
   async createIndikator(
     createDto: CreateKepatuhanDto,
@@ -451,18 +449,13 @@ export class KepatuhanService {
       this.validateModeSpecificFields(validationDto);
     }
 
-    if (
-      updateDto.bobotSection ||
-      updateDto.bobotIndikator ||
-      updateDto.peringkat
-    ) {
-      const bobotSection = updateDto.bobotSection || indikator.bobotSection;
+    if (updateDto.bobotIndikator || updateDto.peringkat) {
       const bobotIndikator =
         updateDto.bobotIndikator || indikator.bobotIndikator;
       const peringkat = updateDto.peringkat || indikator.peringkat;
 
       updateDto.weighted = this.calculateWeighted(
-        bobotSection,
+        indikator.bobotSection,
         bobotIndikator,
         peringkat,
       );
@@ -482,7 +475,9 @@ export class KepatuhanService {
     return await this.kepatuhanRepository.save(indikator);
   }
 
-  async deleteIndikator(id: number): Promise<void> {
+  async deleteIndikator(
+    id: number,
+  ): Promise<{ success: boolean; message: string }> {
     const indikator = await this.kepatuhanRepository.findOne({
       where: { id },
     });
@@ -491,8 +486,14 @@ export class KepatuhanService {
       throw new NotFoundException(`Indikator dengan ID ${id} tidak ditemukan`);
     }
 
-    // ✅ HAPUS INDIKATOR, BUKAN SECTION
-    await this.kepatuhanRepository.delete(id);
+    indikator.isDeleted = true;
+    indikator.deletedAt = new Date();
+    await this.kepatuhanRepository.save(indikator);
+
+    return {
+      success: true,
+      message: `Indikator "${indikator.indikator}" (${indikator.subNo}) berhasil dihapus`,
+    };
   }
 
   async searchIndikators(
@@ -542,108 +543,7 @@ export class KepatuhanService {
     return parseFloat(result?.total || 0) || 0;
   }
 
-  // ========== HELPER METHODS ==========
-
-  private validateModeSpecificFields(dto: Partial<CreateKepatuhanDto>): void {
-    const mode = dto.mode;
-
-    if (mode === CalculationMode.RASIO) {
-      if (dto.pembilangValue !== undefined && dto.pembilangValue < 0) {
-        throw new BadRequestException(
-          'Pembilang value tidak boleh negatif untuk mode RASIO',
-        );
-      }
-      if (dto.penyebutValue !== undefined && dto.penyebutValue <= 0) {
-        throw new BadRequestException(
-          'Penyebut value harus lebih besar dari 0 untuk mode RASIO',
-        );
-      }
-    } else if (mode === CalculationMode.NILAI_TUNGGAL) {
-      if (dto.penyebutValue !== undefined && dto.penyebutValue < 0) {
-        throw new BadRequestException(
-          'Nilai penyebut tidak boleh negatif untuk mode NILAI_TUNGGAL',
-        );
-      }
-    } else if (mode === CalculationMode.TEKS) {
-      if (!dto.hasilText && !dto.hasilText?.trim()) {
-        throw new BadRequestException('Hasil text wajib diisi untuk mode TEKS');
-      }
-    }
-  }
-
-  private calculateWeighted(
-    bobotSection: number,
-    bobotIndikator: number,
-    peringkat: number,
-  ): number {
-    return (bobotSection * bobotIndikator * peringkat) / 10000;
-  }
-
-  async duplicateIndikatorToNewPeriod(
-    sourceId: number,
-    targetYear: number,
-    targetQuarter: Quarter,
-    createdBy?: string,
-  ): Promise<Kepatuhan> {
-    const source = await this.findIndikatorById(sourceId);
-
-    const existing = await this.kepatuhanRepository.findOne({
-      where: {
-        year: targetYear,
-        quarter: targetQuarter,
-        sectionId: source.sectionId,
-        subNo: source.subNo,
-        isDeleted: false,
-      },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        `Indikator dengan subNo "${source.subNo}" sudah ada pada periode ${targetYear}-${targetQuarter}`,
-      );
-    }
-
-    const newIndikatorData: Partial<Kepatuhan> = {
-      ...source,
-      id: undefined,
-      year: targetYear,
-      quarter: targetQuarter,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: 1,
-      revisionNotes: `Duplikasi dari periode ${source.year}-${source.quarter}`,
-      isDeleted: false,
-    };
-
-    if (createdBy) {
-      newIndikatorData.createdBy = createdBy;
-    }
-
-    const newIndikator = this.kepatuhanRepository.create(newIndikatorData);
-    return await this.kepatuhanRepository.save(newIndikator);
-  }
-
-  // ========== ADDITIONAL METHODS ==========
-
-  async getIndikatorCountByPeriod(
-    year: number,
-    quarter: Quarter,
-  ): Promise<number> {
-    try {
-      const result = await this.kepatuhanRepository
-        .createQueryBuilder('kepatuhan')
-        .select('COUNT(kepatuhan.id)', 'count')
-        .where('kepatuhan.year = :year', { year })
-        .andWhere('kepatuhan.quarter = :quarter', { quarter })
-        .andWhere('kepatuhan.is_deleted = false')
-        .getRawOne();
-
-      return parseInt(result?.count || 0) || 0;
-    } catch (error) {
-      console.error('Error in getIndikatorCountByPeriod:', error);
-      return 0;
-    }
-  }
+  // ========== COMPLEX QUERIES ==========
 
   async getSectionsWithIndicatorsByPeriod(
     year: number,
@@ -771,5 +671,106 @@ export class KepatuhanService {
       year: p.kepatuhan_year,
       quarter: p.kepatuhan_quarter,
     }));
+  }
+
+  async getIndikatorCountByPeriod(
+    year: number,
+    quarter: Quarter,
+  ): Promise<number> {
+    try {
+      const result = await this.kepatuhanRepository
+        .createQueryBuilder('kepatuhan')
+        .select('COUNT(kepatuhan.id)', 'count')
+        .where('kepatuhan.year = :year', { year })
+        .andWhere('kepatuhan.quarter = :quarter', { quarter })
+        .andWhere('kepatuhan.is_deleted = false')
+        .getRawOne();
+
+      return parseInt(result?.count || 0) || 0;
+    } catch (error) {
+      console.error('Error in getIndikatorCountByPeriod:', error);
+      return 0;
+    }
+  }
+
+  async duplicateIndikatorToNewPeriod(
+    sourceId: number,
+    targetYear: number,
+    targetQuarter: Quarter,
+    createdBy?: string,
+  ): Promise<Kepatuhan> {
+    const source = await this.findIndikatorById(sourceId);
+
+    const existing = await this.kepatuhanRepository.findOne({
+      where: {
+        year: targetYear,
+        quarter: targetQuarter,
+        sectionId: source.sectionId,
+        subNo: source.subNo,
+        isDeleted: false,
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        `Indikator dengan subNo "${source.subNo}" sudah ada pada periode ${targetYear}-${targetQuarter}`,
+      );
+    }
+
+    const newIndikatorData: Partial<Kepatuhan> = {
+      ...source,
+      id: undefined,
+      year: targetYear,
+      quarter: targetQuarter,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      version: 1,
+      revisionNotes: `Duplikasi dari periode ${source.year}-${source.quarter}`,
+      isDeleted: false,
+    };
+
+    if (createdBy) {
+      newIndikatorData.createdBy = createdBy;
+    }
+
+    const newIndikator = this.kepatuhanRepository.create(newIndikatorData);
+    return await this.kepatuhanRepository.save(newIndikator);
+  }
+
+  // ========== HELPER METHODS ==========
+
+  private validateModeSpecificFields(dto: Partial<CreateKepatuhanDto>): void {
+    const mode = dto.mode;
+
+    if (mode === CalculationMode.RASIO) {
+      if (dto.pembilangValue !== undefined && dto.pembilangValue < 0) {
+        throw new BadRequestException(
+          'Pembilang value tidak boleh negatif untuk mode RASIO',
+        );
+      }
+      if (dto.penyebutValue !== undefined && dto.penyebutValue <= 0) {
+        throw new BadRequestException(
+          'Penyebut value harus lebih besar dari 0 untuk mode RASIO',
+        );
+      }
+    } else if (mode === CalculationMode.NILAI_TUNGGAL) {
+      if (dto.penyebutValue !== undefined && dto.penyebutValue < 0) {
+        throw new BadRequestException(
+          'Nilai penyebut tidak boleh negatif untuk mode NILAI_TUNGGAL',
+        );
+      }
+    } else if (mode === CalculationMode.TEKS) {
+      if (!dto.hasilText || !dto.hasilText.trim()) {
+        throw new BadRequestException('Hasil text wajib diisi untuk mode TEKS');
+      }
+    }
+  }
+
+  private calculateWeighted(
+    bobotSection: number,
+    bobotIndikator: number,
+    peringkat: number,
+  ): number {
+    return (bobotSection * bobotIndikator * peringkat) / 10000;
   }
 }

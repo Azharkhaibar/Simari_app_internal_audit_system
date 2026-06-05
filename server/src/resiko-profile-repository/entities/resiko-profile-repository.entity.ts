@@ -35,7 +35,7 @@ export enum Quarter {
 }
 
 @ViewEntity({
-  name: 'risk_profile_repository_view',
+  name: 'risk_profile_repository_holding_view',
   expression: `
     -- KEPATUHAN (SUDAH DIPERBAIKI)
     SELECT 
@@ -74,8 +74,8 @@ export enum Quarter {
       k.updated_at AS "updatedAt",
       ks.parameter AS "parameter",
       ks.description AS "sectionDescription"
-    FROM indikators_kepatuhan k
-    LEFT JOIN sections_kepatuhan ks ON k.section_id = ks.id
+    FROM indikators_kepatuhan_holding k
+    LEFT JOIN sections_kepatuhan_holding ks ON k.section_id = ks.id
     
     UNION ALL
 
@@ -116,8 +116,8 @@ export enum Quarter {
       r.updated_at AS "updatedAt",
       rs.parameter AS "parameter",
       rs.description AS "sectionDescription"
-    FROM indikators_reputasi r
-    LEFT JOIN sections_reputasi rs ON r.section_id = rs.id
+    FROM indikators_reputasi_holding r
+    LEFT JOIN sections_reputasi_holding rs ON r.section_id = rs.id
     
     UNION ALL
     
@@ -158,8 +158,8 @@ export enum Quarter {
       i.updated_at AS "updatedAt",
       isec.parameter AS "parameter",
       isec.description AS "sectionDescription"
-    FROM indikators_investasi i
-    LEFT JOIN sections_investasi isec ON i.section_id = isec.id
+    FROM indikators_investasi_holding i
+    LEFT JOIN sections_investasi_holding isec ON i.section_id = isec.id
     
     UNION ALL
     
@@ -200,8 +200,8 @@ export enum Quarter {
       l.updated_at AS "updatedAt",
       ls.parameter AS "parameter",
       ls.description AS "sectionDescription"
-    FROM indikators_likuiditas l
-    LEFT JOIN sections_likuiditas ls ON l.section_id = ls.id
+    FROM indikators_likuiditas_holding l
+    LEFT JOIN sections_likuiditas_holding ls ON l.section_id = ls.id
     
     UNION ALL
     
@@ -242,8 +242,8 @@ export enum Quarter {
       o.updated_at AS "updatedAt",
       os.parameter AS "parameter",
       os.description AS "sectionDescription"
-    FROM indikators_operasional o
-    LEFT JOIN sections_operasional os ON o.section_id = os.id
+    FROM indikators_operasional_holding o
+    LEFT JOIN sections_operasional_holding os ON o.section_id = os.id
     
     UNION ALL
     
@@ -284,8 +284,8 @@ export enum Quarter {
       s.updated_at AS "updatedAt",
       ss.parameter AS "parameter",
       ss.description AS "sectionDescription"
-    FROM indikators_strategik s
-    LEFT JOIN sections_strategik ss ON s.section_id = ss.id
+    FROM indikators_stratejik_holding s
+    LEFT JOIN sections_stratejik_holding ss ON s.section_id = ss.id
     
     UNION ALL
     
@@ -326,8 +326,8 @@ export enum Quarter {
       h.updated_at AS "updatedAt",
       hs.parameter AS "parameter",
       hs.description AS "sectionDescription"
-    FROM indikators_hukum h
-    LEFT JOIN sections_hukum hs ON h.section_id = hs.id
+    FROM indikators_hukum_holding h
+    LEFT JOIN sections_hukum_holding hs ON h.section_id = hs.id
     
     UNION ALL
     
@@ -368,8 +368,8 @@ export enum Quarter {
       p.updated_at AS "updatedAt",
       ps.parameter AS "parameter",
       ps.description AS "sectionDescription"
-    FROM indikators_pasar p
-    LEFT JOIN sections_pasar ps ON p.section_id = ps.id
+    FROM indikators_pasar_holding p
+    LEFT JOIN sections_pasar_holding ps ON p.section_id = ps.id
   `,
 })
 @Index('IDX_REPOSITORY_MODULE', ['moduleType'])

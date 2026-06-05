@@ -1,9 +1,9 @@
-// services/api.kepatuhan.service.ts
+// services/api-kepatuhan.service.ts
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:5530/api/v1';
 
-// Buat instance axios untuk kepatuhan (persis sama dengan strategik)
+// Buat instance axios untuk kepatuhan
 export const api_kepatuhan = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -12,7 +12,7 @@ export const api_kepatuhan = axios.create({
   timeout: 10000,
 });
 
-// Interceptor untuk logging error (persis sama dengan strategik)
+// Interceptor untuk logging error
 api_kepatuhan.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
@@ -44,7 +44,7 @@ api_kepatuhan.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api_kepatuhan;

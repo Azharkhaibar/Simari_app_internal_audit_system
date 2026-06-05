@@ -1,24 +1,26 @@
-// src/ojk/konsentrasi-produk/konsentrasi-produk-ojk/konsentrasi-produk-ojk.module.ts
+// konsentrasi.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { KonsentrasiProdukOjkService } from './konsentrasi-produk-ojk.service';
-import { KonsentrasiProdukOjkController } from './konsentrasi-produk-ojk.controller';
-import { KonsentrasiProdukOjk } from './entities/konsentrasi-produk-ojk.entity';
+import { KonsentrasiProdukOjk as Konsentrasi } from './entities/konsentrasi-produk-ojk.entity';
 import { KonsentrasiParameter } from './entities/konsentrasi-produk-paramter.entity';
 import { KonsentrasiNilai } from './entities/konsentrasi-produk-nilai.entity';
-import { InherentReferenceKonsentrasi } from './entities/konsentrasi-inherent-references.entity';
+import { KonsentrasiReference } from './entities/konsentrasi-inherent-references.entity';
+import { OjkModule } from 'src/ojk/ojk-category/entities/ojk-category.entity';
+import { KonsentrasiService } from './konsentrasi-produk-ojk.service';
+import { KonsentrasiController } from './konsentrasi-produk-ojk.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      KonsentrasiProdukOjk,
+      Konsentrasi,
       KonsentrasiParameter,
       KonsentrasiNilai,
-      InherentReferenceKonsentrasi,
+      KonsentrasiReference,
+      OjkModule, // ⬅️ TAMBAHKAN
     ]),
   ],
-  controllers: [KonsentrasiProdukOjkController],
-  providers: [KonsentrasiProdukOjkService],
-  exports: [KonsentrasiProdukOjkService],
+  controllers: [KonsentrasiController],
+  providers: [KonsentrasiService],
+  exports: [KonsentrasiService],
 })
 export class KonsentrasiProdukOjkModule {}

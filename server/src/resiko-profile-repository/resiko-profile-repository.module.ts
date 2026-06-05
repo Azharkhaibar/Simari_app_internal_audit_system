@@ -19,8 +19,9 @@ import { Operasional } from 'src/operasional/operasional/entities/operasional.en
 import { OperasionalSection } from 'src/operasional/operasional/entities/operasional-section.entity';
 import { Hukum } from 'src/hukum/hukum/entities/hukum.entity';
 import { HukumSection } from 'src/hukum/hukum/entities/hukum-section.entity';
-import { Strategik } from 'src/stratejik/stratejik/entities/stratejik.entity';
-import { StrategikSection } from 'src/stratejik/stratejik/entities/stratejik-section.entity';
+// PERBAIKAN: Strategik -> Stratejik
+import { Stratejik } from 'src/stratejik/stratejik/entities/stratejik.entity';
+import { StratejikSection } from 'src/stratejik/stratejik/entities/stratejik-section.entity';
 import { Reputasi } from 'src/reputasi/reputasi/entities/reputasi.entity';
 import { ReputasiSection } from 'src/reputasi/reputasi/entities/reputasi-section.entity';
 
@@ -41,10 +42,10 @@ import { ReputasiSection } from 'src/reputasi/reputasi/entities/reputasi-section
       OperasionalSection,
       Hukum,
       HukumSection,
-      Strategik,
-      StrategikSection,
-      Kepatuhan,
-      KepatuhanSection,
+      // PERBAIKAN: Strategik -> Stratejik
+      Stratejik,
+      StratejikSection,
+      // PERBAIKAN: Hapus duplikasi Kepatuhan & KepatuhanSection
       Reputasi,
       ReputasiSection,
     ]),

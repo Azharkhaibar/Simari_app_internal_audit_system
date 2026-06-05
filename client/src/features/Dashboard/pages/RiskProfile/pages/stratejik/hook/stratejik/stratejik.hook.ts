@@ -1,27 +1,25 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/hooks/useStrategik.ts
-
-// PERBAIKI IMPORT PATH
+// src/features/Dashboard/pages/RiskProfile/pages/Stratejik/hooks/useStratejik.ts
 import { useCallback, useEffect, useState } from 'react';
-// import {
-//   computeHasil,
-//   computeWeightedAuto,
-//   CreateStrategikData,
-//   CreateStrategikSectionData,
-//   Period,
-//   Quarter,
-//   strategikApiService,
-//   StrategikIndikator,
-//   StrategikSection,
-//   transformIndicatorToBackend,
-//   transformIndicatorToFrontend,
-//   transformSectionToBackend,
-//   UpdateStrategikData,
-//   UpdateStrategikSectionData,
-// } from '../services/strategik.service'; // PERBAIKI PATH INI
+import {
+  Quarter,
+  computeHasil,
+  computeWeightedAuto,
+  CreateStratejikData,
+  CreateStratejikSectionData,
+  Period,
+  StratejikIndikator,
+  StratejikSection,
+  stratejikApiService,
+  transformIndicatorToBackend,
+  transformIndicatorToFrontend,
+  transformSectionToBackend,
+  UpdateStratejikData,
+  UpdateStratejikSectionData,
+  SectionsWithIndicatorsResponse,
+  DeleteResponse,
+} from '../../service/stratejik/stratejik.service';
 
-import { Quarter, computeHasil, computeWeightedAuto, CreateStrategikData, CreateStrategikSectionData, Period, StrategikIndikator, StrategikSection, transformIndicatorToBackend, UpdateStrategikData, UpdateStrategikSectionData, transformSectionToBackend, transformIndicatorToFrontend, strategikApiService } from '../../service/stratejik/stratejik.service';
-
-// EMPTY TEMPLATES - TAMBAHKAN YEAR DAN QUARTER
+// EMPTY TEMPLATES
 export const emptyIndicator = {
   id: null,
   subNo: '',
@@ -63,21 +61,18 @@ export const emptySection = {
   quarter: 'Q1' as Quarter,
 };
 
-interface UseStrategikOptions {
+interface UseStratejikOptions {
   initialYear?: number;
   initialQuarter?: Quarter;
   autoLoad?: boolean;
 }
 
-interface UseStrategikReturn {
+interface UseStratejikReturn {
   // ========== STATE ==========
-  // Data
-  sections: StrategikSection[];
-  indikators: StrategikIndikator[];
-  sectionsWithIndicators: Array<StrategikSection & { indicators: StrategikIndikator[] }>;
+  sections: StratejikSection[];
+  indikators: StratejikIndikator[];
+  sectionsWithIndicators: Array<StratejikSection & { indicators: StratejikIndikator[]; totalWeighted: number; indicatorCount: number }>;
   periods: Period[];
-
-  // UI State
   viewYear: number;
   viewQuarter: Quarter;
   query: string;
@@ -85,55 +80,51 @@ interface UseStrategikReturn {
   error: string | null;
   totalWeighted: number;
 
-  // ========== ACTIONS ==========
-  // State setters
+  // ========== STATE SETTERS ==========
   setViewYear: (year: number) => void;
   setViewQuarter: (quarter: Quarter) => void;
   setQuery: (query: string) => void;
   clearError: () => void;
 
   // ========== DATA OPERATIONS ==========
-  // Load data
-  getSections: (isActive?: boolean) => Promise<void>;
-  getAllIndikators: () => Promise<void>;
-  getIndikatorsByPeriod: (year: number, quarter: Quarter) => Promise<StrategikIndikator[]>;
-  getSectionsWithIndicatorsByPeriod: (year: number, quarter: Quarter) => Promise<Array<StrategikSection & { indicators: StrategikIndikator[] }>>;
-  getPeriods: () => Promise<void>;
-  searchIndikators: (query?: string, year?: number, quarter?: Quarter) => Promise<StrategikIndikator[]>;
-  getAllSections: (isActive?: boolean) => Promise<StrategikSection[]>; // TAMBAHKAN INI
+  getSections: (isActive?: boolean) => Promise<StratejikSection[]>;
+  getAllIndikators: () => Promise<StratejikIndikator[]>;
+  getIndikatorsByPeriod: (year: number, quarter: Quarter) => Promise<StratejikIndikator[]>;
+  getSectionsWithIndicatorsByPeriod: (year: number, quarter: Quarter) => Promise<Array<StratejikSection & { indicators: StratejikIndikator[]; totalWeighted: number; indicatorCount: number }>>;
+  getPeriods: () => Promise<Period[]>;
+  searchIndikators: (query?: string, year?: number, quarter?: Quarter) => Promise<StratejikIndikator[]>;
+  getAllSections: (isActive?: boolean) => Promise<StratejikSection[]>;
 
   // ========== CRUD OPERATIONS ==========
-  // Section CRUD
-  createSection: (data: CreateStrategikSectionData) => Promise<StrategikSection>;
-  getSectionById: (id: number) => Promise<StrategikSection>;
-  updateSection: (id: number, data: UpdateStrategikSectionData) => Promise<StrategikSection>;
-  deleteSection: (id: number) => Promise<void>;
-
-  // Indikator CRUD
-  createIndikator: (data: CreateStrategikData) => Promise<StrategikIndikator>;
-  getIndikatorById: (id: number) => Promise<StrategikIndikator>;
-  updateIndikator: (id: number, data: UpdateStrategikData) => Promise<StrategikIndikator>;
-  deleteIndikator: (id: number) => Promise<void>;
+  createSection: (data: CreateStratejikSectionData) => Promise<StratejikSection>;
+  getSectionById: (id: number) => Promise<StratejikSection>;
+  updateSection: (id: number, data: UpdateStratejikSectionData) => Promise<StratejikSection>;
+  deleteSection: (id: number) => Promise<DeleteResponse>;
+  createIndikator: (data: CreateStratejikData) => Promise<StratejikIndikator>;
+  getIndikatorById: (id: number) => Promise<StratejikIndikator>;
+  updateIndikator: (id: number, data: UpdateStratejikData) => Promise<StratejikIndikator>;
+  deleteIndikator: (id: number) => Promise<DeleteResponse>;
 
   // ========== HELPER OPERATIONS ==========
-  // Calculations
   getTotalWeightedByPeriod: (year: number, quarter: Quarter) => Promise<number>;
   calculateTotalWeighted: () => Promise<void>;
-  duplicateIndikator: (sourceId: number, targetYear: number, targetQuarter: Quarter) => Promise<StrategikIndikator>;
+  duplicateIndikator: (sourceId: number, targetYear: number, targetQuarter: Quarter) => Promise<StratejikIndikator>;
+  getIndikatorCount: (year: number, quarter: Quarter) => Promise<number>;
+  getPeriodsWithCounts: () => Promise<(Period & { indicatorCount: number })[]>;
 
-  // Transformations
+  // ========== TRANSFORMATIONS ==========
   transformToBackend: typeof transformIndicatorToBackend;
   transformToFrontend: typeof transformIndicatorToFrontend;
   transformSectionToBackend: typeof transformSectionToBackend;
   computeHasil: typeof computeHasil;
   computeWeightedAuto: typeof computeWeightedAuto;
 
-  // Templates
+  // ========== TEMPLATES ==========
   emptyIndicator: typeof emptyIndicator;
   emptySection: typeof emptySection;
 }
 
-export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn => {
+export const useStratejik = (options?: UseStratejikOptions): UseStratejikReturn => {
   const { initialYear = new Date().getFullYear(), initialQuarter = 'Q1' as Quarter, autoLoad = true } = options || {};
 
   // ========== STATE ==========
@@ -141,9 +132,9 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
   const [viewQuarter, setViewQuarter] = useState<Quarter>(initialQuarter);
   const [query, setQuery] = useState<string>('');
 
-  const [sections, setSections] = useState<StrategikSection[]>([]);
-  const [indikators, setIndikators] = useState<StrategikIndikator[]>([]);
-  const [sectionsWithIndicators, setSectionsWithIndicators] = useState<Array<StrategikSection & { indicators: StrategikIndikator[] }>>([]);
+  const [sections, setSections] = useState<StratejikSection[]>([]);
+  const [indikators, setIndikators] = useState<StratejikIndikator[]>([]);
+  const [sectionsWithIndicators, setSectionsWithIndicators] = useState<Array<StratejikSection & { indicators: StratejikIndikator[]; totalWeighted: number; indicatorCount: number }>>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [totalWeighted, setTotalWeighted] = useState<number>(0);
 
@@ -169,229 +160,245 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
   }, []);
 
   const handleError = useCallback((err: any, operation: string) => {
-    console.error(`Error during ${operation}:`, err);
-    const errorMessage = err.message || `Gagal melakukan ${operation}`;
+    console.error(`❌ Error during ${operation}:`, err);
+
+    let errorMessage = 'Terjadi kesalahan';
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    } else if (typeof err === 'string') {
+      errorMessage = err;
+    }
+
     setError(errorMessage);
-    throw err; // Lempar error agar bisa ditangkap di component
+    throw err;
+  }, []);
+
+  const withLoading = useCallback(async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      setLoading(true);
+      return await fn();
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // ========== DATA LOADING ==========
   const loadInitialData = useCallback(async () => {
     try {
-      setLoading(true);
-      await Promise.all([getSections(), getPeriods(), loadDataByPeriod()]);
+      await withLoading(async () => {
+        await Promise.all([getSections(), getPeriods(), getSectionsWithIndicatorsByPeriod(viewYear, viewQuarter)]);
+      });
     } catch (err) {
       handleError(err, 'memuat data awal');
-    } finally {
-      setLoading(false);
     }
   }, [viewYear, viewQuarter]);
 
   const loadDataByPeriod = useCallback(async () => {
     try {
-      setLoading(true);
-      await getSectionsWithIndicatorsByPeriod(viewYear, viewQuarter);
-      await calculateTotalWeighted();
+      await withLoading(async () => {
+        await getSectionsWithIndicatorsByPeriod(viewYear, viewQuarter);
+        await calculateTotalWeighted();
+      });
     } catch (err) {
-      handleError(err, 'memuat data periode');
-    } finally {
-      setLoading(false);
+      handleError(err, `memuat data periode ${viewYear}-${viewQuarter}`);
     }
   }, [viewYear, viewQuarter]);
 
   // ========== SECTION OPERATIONS ==========
-  const getSections = useCallback(
-    async (isActive?: boolean) => {
-      try {
-        setLoading(true);
-        const data = await strategikApiService.getAllSections(isActive);
-        setSections(data);
-        return data;
-      } catch (err) {
-        throw handleError(err, 'mengambil sections');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getSections = useCallback(async (isActive?: boolean): Promise<StratejikSection[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getAllSections(isActive);
+      setSections(data);
+      return data;
+    });
+  }, []);
 
-  
+  const getAllSections = useCallback(async (isActive?: boolean): Promise<StratejikSection[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getAllSections(isActive);
+      return data;
+    });
+  }, []);
 
-  // TAMBAHKAN METHOD getAllSections
-  const getAllSections = useCallback(
-    async (isActive?: boolean): Promise<StrategikSection[]> => {
-      try {
-        setLoading(true);
-        const data = await strategikApiService.getAllSections(isActive);
-        return data;
-      } catch (err) {
-        throw handleError(err, 'mengambil semua sections');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getSectionById = useCallback(async (id: number): Promise<StratejikSection> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getSectionById(id);
+      return data;
+    });
+  }, []);
 
-  const getSectionById = useCallback(
-    async (id: number): Promise<StrategikSection> => {
-      try {
-        setLoading(true);
-        const data = await strategikApiService.getSectionById(id);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil section dengan ID ${id}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const createSection = useCallback(async (data: CreateStratejikSectionData): Promise<StratejikSection> => {
+    return withLoading(async () => {
+      const newSection = await stratejikApiService.createSection(data);
+      setSections((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [...prev, newSection];
+      });
+      setSectionsWithIndicators((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [
+          ...prev,
+          {
+            ...newSection,
+            indicators: [],
+            totalWeighted: 0,
+            indicatorCount: 0,
+          },
+        ];
+      });
+      return newSection;
+    });
+  }, []);
 
-  const createSection = useCallback(
-    async (data: CreateStrategikSectionData): Promise<StrategikSection> => {
-      try {
-        setLoading(true);
-        const newSection = await strategikApiService.createSection(data);
-        setSections((prev) => [...prev, newSection]);
-        return newSection;
-      } catch (err) {
-        throw handleError(err, 'membuat section');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const updateSection = useCallback(async (id: number, data: UpdateStratejikSectionData): Promise<StratejikSection> => {
+    return withLoading(async () => {
+      const updatedSection = await stratejikApiService.updateSection(id, data);
+      setSections((prev) => prev.map((section) => (section.id === id ? { ...section, ...updatedSection } : section)));
+      setSectionsWithIndicators((prev) =>
+        prev.map((section) =>
+          section.id === id
+            ? { ...section, ...updatedSection }
+            : section
+        )
+      );
+      return updatedSection;
+    });
+  }, []);
 
-  const updateSection = useCallback(
-    async (id: number, data: UpdateStrategikSectionData): Promise<StrategikSection> => {
-      try {
-        setLoading(true);
-        const updatedSection = await strategikApiService.updateSection(id, data);
-        setSections((prev: { id: number; }[]) => prev.map((section: { id: number; }) => (section.id === id ? updatedSection : section)));
-        return updatedSection;
-      } catch (err) {
-        throw handleError(err, `mengupdate section dengan ID ${id}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const deleteSection = useCallback(async (id: number): Promise<DeleteResponse> => {
+    return withLoading(async () => {
+      const result = await stratejikApiService.deleteSection(id);
 
-  const deleteSection = useCallback(
-    async (id: number): Promise<void> => {
-      try {
-        setLoading(true);
-        await strategikApiService.deleteSection(id);
+      if (result.success) {
         setSections((prev) => prev.filter((section) => section.id !== id));
-
-        // Remove from sections with indicators
         setSectionsWithIndicators((prev) => prev.filter((section) => section.id !== id));
-      } catch (err) {
-        throw handleError(err, `menghapus section dengan ID ${id}`);
-      } finally {
-        setLoading(false);
       }
-    },
-    [handleError]
-  );
+
+      return result;
+    });
+  }, []);
 
   // ========== INDIKATOR OPERATIONS ==========
-  const getAllIndikators = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await strategikApiService.getAllIndikators();
+  const getAllIndikators = useCallback(async (): Promise<StratejikIndikator[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getAllIndikators();
       setIndikators(data);
       return data;
-    } catch (err) {
-      throw handleError(err, 'mengambil semua indikator');
-    } finally {
-      setLoading(false);
-    }
-  }, [handleError]);
+    });
+  }, []);
 
-  const getIndikatorsByPeriod = useCallback(
-    async (year: number, quarter: Quarter): Promise<StrategikIndikator[]> => {
-      try {
-        setLoading(true);
-        const data = await strategikApiService.getIndikatorsByPeriod(year, quarter);
-        setIndikators(data);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil indikator periode ${year}-${quarter}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getIndikatorsByPeriod = useCallback(async (year: number, quarter: Quarter): Promise<StratejikIndikator[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getIndikatorsByPeriod(year, quarter);
+      setIndikators(data);
+      return data;
+    });
+  }, []);
 
   const getSectionsWithIndicatorsByPeriod = useCallback(
-    async (year: number, quarter: Quarter): Promise<Array<StrategikSection & { indicators: StrategikIndikator[] }>> => {
-      try {
-        setLoading(true);
-        const response = await strategikApiService.getSectionsWithIndicatorsByPeriod(year, quarter);
+    async (year: number, quarter: Quarter): Promise<any> => {
+      return withLoading(async () => {
+        const targetYear = Number(year);
+        const targetQuarter = String(quarter) as Quarter;
 
-        // Handle response structure
-        let data = [];
-        if (response && typeof response === 'object') {
-          if (Array.isArray(response.sections)) {
-            data = response.sections;
-          } else if (Array.isArray(response)) {
-            data = response;
-          } else if (response.data && Array.isArray(response.data.sections)) {
-            data = response.data.sections;
-          }
+        console.log(`📡 Hook: Calling getSectionsWithIndicatorsByPeriod for ${targetYear}-${targetQuarter}`);
+
+        const response = await stratejikApiService.getSectionsWithIndicatorsByPeriod(targetYear, targetQuarter);
+
+        console.log('📦 Raw response:', response);
+
+        // ADAPTASI STRUKTUR RESPONSE
+        let sectionsData = [];
+
+        // Jika response langsung array
+        if (Array.isArray(response)) {
+          sectionsData = response;
+        }
+        // Jika response punya properti sections
+        else if (response?.sections && Array.isArray(response.sections)) {
+          sectionsData = response.sections;
+        }
+        // Jika response punya properti data
+        else if (response?.data && Array.isArray(response.data)) {
+          sectionsData = response.data;
         }
 
-        setSectionsWithIndicators(data);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil sections dengan indikator periode ${year}-${quarter}`);
-      } finally {
-        setLoading(false);
-      }
+        console.log('📊 Extracted sectionsData:', sectionsData);
+
+        // Mapping data yang lengkap
+        sectionsData = sectionsData.map((section) => ({
+          ...section,
+          indicators: (section.indicators || []).map((ind) => ({
+            id: ind.id,
+            subNo: ind.subNo || '',
+            indikator: ind.indikator || '',
+            bobotIndikator: ind.bobotIndikator || 0,
+            sumberRisiko: ind.sumberRisiko || '',
+            dampak: ind.dampak || '',
+            // === PEMBILANG & PENYEBUT ===
+            pembilangLabel: ind.pembilangLabel || '',
+            pembilangValue: ind.pembilangValue !== null && ind.pembilangValue !== undefined ? ind.pembilangValue.toString() : '',
+            penyebutLabel: ind.penyebutLabel || '',
+            penyebutValue: ind.penyebutValue !== null && ind.penyebutValue !== undefined ? ind.penyebutValue.toString() : '',
+            // === RISK LEVELS ===
+            low: ind.low || '',
+            lowToModerate: ind.lowToModerate || '',
+            moderate: ind.moderate || '',
+            moderateToHigh: ind.moderateToHigh || '',
+            high: ind.high || '',
+            // === METODE & HASIL ===
+            mode: ind.mode || 'RASIO',
+            formula: ind.formula || '',
+            isPercent: Boolean(ind.isPercent),
+            hasil: ind.hasil !== null ? ind.hasil.toString() : '',
+            hasilText: ind.hasilText || '',
+            peringkat: ind.peringkat || 1,
+            weighted: ind.weighted || '',
+            keterangan: ind.keterangan || '',
+            // === INFORMASI SECTION ===
+            sectionId: ind.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year || targetYear,
+            quarter: section.quarter || targetQuarter,
+            isValidated: ind.isValidated || false,
+            // === FIELD KOMPATIBILITAS DENGAN DATATABLE ===
+            numeratorLabel: ind.pembilangLabel || '',
+            numeratorValue: ind.pembilangValue !== null && ind.pembilangValue !== undefined ? ind.pembilangValue.toString() : '',
+            denominatorLabel: ind.penyebutLabel || '',
+            denominatorValue: ind.penyebutValue !== null && ind.penyebutValue !== undefined ? ind.penyebutValue.toString() : '',
+          })),
+          totalWeighted: section.totalWeighted || 0,
+          indicatorCount: section.indicatorCount || 0,
+        }));
+
+        console.log('📊 Data sections setelah mapping:', sectionsData);
+
+        setSectionsWithIndicators(sectionsData);
+        return sectionsData;
+      });
     },
-    [handleError]
+    [withLoading],
   );
 
-  const searchIndikators = useCallback(
-    async (searchQuery?: string, year?: number, quarter?: Quarter): Promise<StrategikIndikator[]> => {
-      try {
-        setLoading(true);
-        const data = await strategikApiService.searchIndikators(searchQuery, year, quarter);
-        return data;
-      } catch (err) {
-        throw handleError(err, 'mencari indikator');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const searchIndikators = useCallback(async (searchQuery?: string, year?: number, quarter?: Quarter): Promise<StratejikIndikator[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.searchIndikators(searchQuery, year, quarter);
+      return data;
+    });
+  }, []);
 
-  const getIndikatorById = useCallback(
-    async (id: number): Promise<StrategikIndikator> => {
-      try {
-        setLoading(true);
-        const data = await strategikApiService.getIndikatorById(id);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil indikator dengan ID ${id}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getIndikatorById = useCallback(async (id: number): Promise<StratejikIndikator> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getIndikatorById(id);
+      return data;
+    });
+  }, []);
 
-  const createIndikator = useCallback(async (data: CreateStrategikData): Promise<StrategikIndikator> => {
-    try {
-      setLoading(true);
-      const newIndikator = await strategikApiService.createIndikator(data);
+  const createIndikator = useCallback(async (data: CreateStratejikData): Promise<StratejikIndikator> => {
+    return withLoading(async () => {
+      const newIndikator = await stratejikApiService.createIndikator(data);
 
       // Update indikators list
       setIndikators((prev) => [...prev, newIndikator]);
@@ -401,9 +408,25 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
         const sectionIndex = prev.findIndex((s) => s.id === data.sectionId);
         if (sectionIndex !== -1) {
           const updated = [...prev];
+          const section = updated[sectionIndex];
+          const mappedIndikator = {
+            ...newIndikator,
+            sectionId: newIndikator.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year,
+            quarter: section.quarter,
+            numeratorLabel: newIndikator.pembilangLabel || '',
+            numeratorValue: newIndikator.pembilangValue !== null && newIndikator.pembilangValue !== undefined ? newIndikator.pembilangValue.toString() : '',
+            denominatorLabel: newIndikator.penyebutLabel || '',
+            denominatorValue: newIndikator.penyebutValue !== null && newIndikator.penyebutValue !== undefined ? newIndikator.penyebutValue.toString() : '',
+          };
           updated[sectionIndex] = {
-            ...updated[sectionIndex],
-            indicators: [...updated[sectionIndex].indicators, newIndikator],
+            ...section,
+            indicators: [...section.indicators, mappedIndikator],
+            indicatorCount: section.indicatorCount + 1,
+            totalWeighted: section.totalWeighted + (newIndikator.weighted || 0),
           };
           return updated;
         }
@@ -411,112 +434,147 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
       });
 
       return newIndikator;
-    } catch (err) {
-      throw handleError(err, 'membuat indikator');
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
-  const updateIndikator = useCallback(async (id: number, data: UpdateStrategikData): Promise<StrategikIndikator> => {
-    try {
-      setLoading(true);
-      const updatedIndikator = await strategikApiService.updateIndikator(id, data);
+  const updateIndikator = useCallback(
+    async (id: number, data: UpdateStratejikData): Promise<StratejikIndikator> => {
+      return withLoading(async () => {
+        if (data.mode === 'RASIO' && data.penyebutValue === 0) {
+          throw new Error('Untuk mode RASIO, nilai penyebut harus lebih besar dari 0');
+        }
 
-      // Update indikators list
-      setIndikators((prev) => prev.map((indikator) => (indikator.id === id ? updatedIndikator : indikator)));
+        const updatedIndikator = await stratejikApiService.updateIndikator(id, data);
 
-      // Update sections with indicators
-      setSectionsWithIndicators((prev) =>
-        prev.map((section) => {
-          const updatedIndicators = section.indicators.map((indikator) => (indikator.id === id ? updatedIndikator : indikator));
-          return { ...section, indicators: updatedIndicators };
-        })
-      );
+        // Find old indikator untuk adjust totalWeighted
+        const oldIndikator = indikators.find((i) => i.id === id);
 
-      return updatedIndikator;
-    } catch (err) {
-      throw handleError(err, `mengupdate indikator dengan ID ${id}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        // Update indikators list
+        setIndikators((prev) => prev.map((indikator) => (indikator.id === id ? updatedIndikator : indikator)));
 
-  const deleteIndikator = useCallback(async (id: number): Promise<void> => {
-    try {
-      setLoading(true);
-      await strategikApiService.deleteIndikator(id);
+        // Update sections with indicators
+        setSectionsWithIndicators((prev) =>
+          prev.map((section) => {
+            const indicatorIndex = section.indicators.findIndex((i) => i.id === id);
+            if (indicatorIndex !== -1) {
+              const newIndicators = [...section.indicators];
+              const mappedIndikator = {
+                ...newIndicators[indicatorIndex],
+                ...updatedIndikator,
+                sectionId: updatedIndikator.sectionId || section.id,
+                no: section.no,
+                sectionLabel: section.parameter,
+                bobotSection: section.bobotSection,
+                year: section.year,
+                quarter: section.quarter,
+                numeratorLabel: updatedIndikator.pembilangLabel || '',
+                numeratorValue: updatedIndikator.pembilangValue !== null && updatedIndikator.pembilangValue !== undefined ? updatedIndikator.pembilangValue.toString() : '',
+                denominatorLabel: updatedIndikator.penyebutLabel || '',
+                denominatorValue: updatedIndikator.penyebutValue !== null && updatedIndikator.penyebutValue !== undefined ? updatedIndikator.penyebutValue.toString() : '',
+              };
+              newIndicators[indicatorIndex] = mappedIndikator;
 
-      // Update indikators list
-      setIndikators((prev) => prev.filter((indikator) => indikator.id !== id));
+              // Recalculate totalWeighted
+              const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);
 
-      // Update sections with indicators
-      setSectionsWithIndicators((prev) =>
-        prev.map((section) => ({
-          ...section,
-          indicators: section.indicators.filter((indikator) => indikator.id !== id),
-        }))
-      );
-    } catch (err) {
-      throw handleError(err, `menghapus indikator dengan ID ${id}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+              return {
+                ...section,
+                indicators: newIndicators,
+                totalWeighted: newTotalWeighted,
+              };
+            }
+            return section;
+          }),
+        );
+
+        return updatedIndikator;
+      });
+    },
+    [indikators],
+  );
+
+  const deleteIndikator = useCallback(
+    async (id: number): Promise<DeleteResponse> => {
+      return withLoading(async () => {
+        const result = await stratejikApiService.deleteIndikator(id);
+
+        if (result.success) {
+          // Find indikator untuk adjust totalWeighted
+          const deletedIndikator = indikators.find((i) => i.id === id);
+
+          // Update indikators list
+          setIndikators((prev) => prev.filter((indikator) => indikator.id !== id));
+
+          // Update sections with indicators
+          setSectionsWithIndicators((prev) =>
+            prev.map((section) => {
+              const newIndicators = section.indicators.filter((i) => i.id !== id);
+              const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);
+
+              return {
+                ...section,
+                indicators: newIndicators,
+                indicatorCount: newIndicators.length,
+                totalWeighted: newTotalWeighted,
+              };
+            }),
+          );
+        }
+
+        return result;
+      });
+    },
+    [indikators],
+  );
 
   // ========== HELPER OPERATIONS ==========
-  const getTotalWeightedByPeriod = useCallback(
-    async (year: number, quarter: Quarter): Promise<number> => {
-      try {
-        setLoading(true);
-        const total = await strategikApiService.getTotalWeightedByPeriod(year, quarter);
-        return total;
-      } catch (err) {
-        throw handleError(err, `menghitung total weighted periode ${year}-${quarter}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getTotalWeightedByPeriod = useCallback(async (year: number, quarter: Quarter): Promise<number> => {
+    return withLoading(async () => {
+      const total = await stratejikApiService.getTotalWeightedByPeriod(year, quarter);
+      return total;
+    });
+  }, []);
 
   const calculateTotalWeighted = useCallback(async () => {
     try {
-      const total = await getTotalWeightedByPeriod(viewYear, viewQuarter);
+      const total = await stratejikApiService.getTotalWeightedByPeriod(viewYear, viewQuarter);
       setTotalWeighted(total);
     } catch (err) {
       setTotalWeighted(0);
       handleError(err, `menghitung total weighted periode ${viewYear}-${viewQuarter}`);
     }
-  }, [viewYear, viewQuarter, getTotalWeightedByPeriod, handleError]);
+  }, [viewYear, viewQuarter]);
 
-  const getPeriods = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await strategikApiService.getAvailablePeriods();
+  const getPeriods = useCallback(async (): Promise<Period[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getAvailablePeriods();
       setPeriods(data);
       return data;
-    } catch (err) {
-      throw handleError(err, 'mengambil periode tersedia');
-    } finally {
-      setLoading(false);
-    }
-  }, [handleError]);
+    });
+  }, []);
 
-  const duplicateIndikator = useCallback(async (sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<StrategikIndikator> => {
-    try {
-      setLoading(true);
-      const newIndikator = await strategikApiService.duplicateIndikator(sourceId, targetYear, targetQuarter);
+  const getPeriodsWithCounts = useCallback(async (): Promise<(Period & { indicatorCount: number })[]> => {
+    return withLoading(async () => {
+      const data = await stratejikApiService.getPeriodsWithCounts();
+      return data;
+    });
+  }, []);
 
-      // Add to indikators list
+  const getIndikatorCount = useCallback(async (year: number, quarter: Quarter): Promise<number> => {
+    return withLoading(async () => {
+      const count = await stratejikApiService.getIndikatorCount(year, quarter);
+      return count;
+    });
+  }, []);
+
+  const duplicateIndikator = useCallback(async (sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<StratejikIndikator> => {
+    return withLoading(async () => {
+      const newIndikator = await stratejikApiService.duplicateIndikator(sourceId, targetYear, targetQuarter);
+
       setIndikators((prev) => [...prev, newIndikator]);
 
       return newIndikator;
-    } catch (err) {
-      throw handleError(err, 'menduplikasi indikator');
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
   // ========== RETURN ==========
@@ -533,7 +591,7 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
     error,
     totalWeighted,
 
-    // Actions
+    // State setters
     setViewYear,
     setViewQuarter,
     setQuery,
@@ -546,7 +604,7 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
     getSectionsWithIndicatorsByPeriod,
     getPeriods,
     searchIndikators,
-    getAllSections, // TAMBAHKAN INI
+    getAllSections,
 
     // CRUD operations
     createSection,
@@ -562,6 +620,8 @@ export const useStrategik = (options?: UseStrategikOptions): UseStrategikReturn 
     getTotalWeightedByPeriod,
     calculateTotalWeighted,
     duplicateIndikator,
+    getIndikatorCount,
+    getPeriodsWithCounts,
 
     // Transformations
     transformToBackend: transformIndicatorToBackend,

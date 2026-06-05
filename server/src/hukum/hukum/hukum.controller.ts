@@ -1,4 +1,4 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/controllers/strategik.controller.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Hukum/controllers/hukum.controller.ts
 import {
   Controller,
   Get,
@@ -12,30 +12,24 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+// import { HukumService } from '../services/new-hukum.service';
+// import { CreateHukumSectionDto } from '../dto/create-hukum-section.dto';
+// import { UpdateHukumSectionDto } from '../dto/update-hukum-section.dto';
+// import { CreateHukumDto } from '../dto/create-new-hukum.dto';
+// import { UpdateHukumDto } from '../dto/update-new-hukum.dto';
+// import { Quarter } from '../entities/new-hukum.entity';
+
 import { HukumService } from './hukum.service';
 import { CreateHukumSectionDto } from './dto/create-hukum-section.dto';
+// import { UpdateHukumSectionDto } from './dto/update-new-hukum-section.dto';
+// import { CreateHukumDto } from './dto/create-new-hukum.dto';
+// import { UpdateHukumDto } from './dto/update-new-hukum.dto';
+// import { Quarter } from './entities/new-hukum.entity';
 import { UpdateHukumSectionDto } from './dto/update-hukum-section.dto';
-import { Quarter } from './entities/hukum.entity';
-import { UpdateHukumDto } from './dto/update-hukum.dto';
 import { CreateHukumDto } from './dto/create-hukum.dto';
-// import { StrategikService } from '../services/strategik.service';
-// import { CreateStrategikSectionDto } from '../dto/create-strategik-section.dto';
-// import { UpdateStrategikSectionDto } from '../dto/update-strategik-section.dto';
-// import { CreateStrategikDto } from '../dto/create-strategik.dto';
-// import { UpdateStrategikDto } from '../dto/update-strategik.dto';
-// import { Quarter } from '../../../../entities/strategik/stratejik.entity';
-
-// import { StrategikService } from './stratejik.service';
-// import { CreateStrategikSectionDto } from './dto/create-stratejik-section.dto';
-// import { UpdateStrategikSectionDto } from './dto/update-stratejik-section.dto';
-// import { CreateStrategikDto } from './dto/create-stratejik.dto';
-// import { UpdateStrategikDto } from './dto/update-stratejik.dto';
-// import { Quarter } from './entities/stratejik.entity';
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/controllers/strategik.controller.ts
-
-// ... imports ...
-
+import { UpdateHukumDto } from './dto/update-hukum.dto';
+import { Quarter } from './entities/hukum.entity';
 @ApiTags('Hukum')
 @Controller('hukum')
 export class HukumController {
@@ -45,26 +39,39 @@ export class HukumController {
 
   @Post('sections')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create new strategik section' })
+  @ApiOperation({ summary: 'Create new hukum section' })
+  @ApiResponse({ status: 201, description: 'Section created successfully' })
+  @ApiResponse({ status: 409, description: 'Section already exists' })
   async createSection(@Body() createDto: CreateHukumSectionDto) {
     return await this.hukumService.createSection(createDto);
   }
 
   @Get('sections')
-  @ApiOperation({ summary: 'Get all strategik sections' })
+  @ApiOperation({ summary: 'Get all hukum sections' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   async getSections(@Query('isActive') isActive?: boolean) {
     return await this.hukumService.findAllSections(isActive);
   }
 
   @Get('sections/:id')
-  @ApiOperation({ summary: 'Get strategik section by ID' })
+  @ApiOperation({ summary: 'Get hukum section by ID' })
   async getSection(@Param('id', ParseIntPipe) id: number) {
-    return await this.hukumService.findSectionById(id); // Method ini harus ada di service
+    return await this.hukumService.findSectionById(id);
+  }
+
+  @Get('sections/period')
+  @ApiOperation({ summary: 'Get hukum sections by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.hukumService.findSectionsByPeriod(year, quarter);
   }
 
   @Put('sections/:id')
-  @ApiOperation({ summary: 'Update strategik section' })
+  @ApiOperation({ summary: 'Update hukum section' })
   async updateSection(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateHukumSectionDto,
@@ -73,42 +80,31 @@ export class HukumController {
   }
 
   @Delete('sections/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete strategik section' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete hukum section' })
   async deleteSection(@Param('id', ParseIntPipe) id: number) {
-    await this.hukumService.deleteSection(id);
-  }
-
-  @Get('indikators/sections-by-period')
-  @ApiOperation({ summary: 'Get sections with indicators by period' })
-  async getSectionsWithIndicatorsByPeriod(
-    @Query('year', new ParseIntPipe()) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return await this.hukumService.getSectionsWithIndicatorsByPeriod(
-      year,
-      quarter,
-    );
+    return await this.hukumService.deleteSection(id);
   }
 
   // ========== INDIKATOR ENDPOINTS ==========
 
   @Post('indikators')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create new strategik indikator' })
+  @ApiOperation({ summary: 'Create new hukum indikator' })
+  @ApiResponse({ status: 201, description: 'Indikator created successfully' })
+  @ApiResponse({ status: 409, description: 'Indikator already exists' })
   async createIndikator(@Body() createDto: CreateHukumDto) {
     return await this.hukumService.createIndikator(createDto);
   }
 
   @Get('indikators')
-  @ApiOperation({ summary: 'Get all strategik indikators' })
+  @ApiOperation({ summary: 'Get all hukum indikators' })
   async getAllIndikators() {
     return await this.hukumService.findAllIndikators();
   }
 
   @Get('indikators/period')
-  @ApiOperation({ summary: 'Get strategik indikators by period' })
+  @ApiOperation({ summary: 'Get hukum indikators by period' })
   @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
   async getIndikatorsByPeriod(
@@ -119,7 +115,7 @@ export class HukumController {
   }
 
   @Get('indikators/search')
-  @ApiOperation({ summary: 'Search strategik indikators' })
+  @ApiOperation({ summary: 'Search hukum indikators' })
   @ApiQuery({ name: 'query', required: false })
   @ApiQuery({ name: 'year', required: false })
   @ApiQuery({ name: 'quarter', required: false, enum: Quarter })
@@ -132,13 +128,13 @@ export class HukumController {
   }
 
   @Get('indikators/:id')
-  @ApiOperation({ summary: 'Get strategik indikator by ID' })
+  @ApiOperation({ summary: 'Get hukum indikator by ID' })
   async getIndikator(@Param('id', ParseIntPipe) id: number) {
     return await this.hukumService.findIndikatorById(id);
   }
 
   @Put('indikators/:id')
-  @ApiOperation({ summary: 'Update strategik indikator' })
+  @ApiOperation({ summary: 'Update hukum indikator' })
   async updateIndikator(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateHukumDto,
@@ -147,15 +143,35 @@ export class HukumController {
   }
 
   @Delete('indikators/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete strategik indikator' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete hukum indikator' })
   async deleteIndikator(@Param('id', ParseIntPipe) id: number) {
-    await this.hukumService.deleteIndikator(id);
+    return await this.hukumService.deleteIndikator(id);
+  }
+
+  // ========== COMPLEX QUERIES ENDPOINTS ==========
+
+  @Get('data/with-indicators')
+  @ApiOperation({
+    summary: 'Get sections with their indicators for a period',
+    description:
+      'Returns sections with nested indicators for a specific year and quarter',
+  })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsWithIndicatorsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.hukumService.getSectionsWithIndicatorsByPeriod(
+      year,
+      quarter,
+    );
   }
 
   @Get('total-weighted')
-  @ApiOperation({ summary: 'Get total weighted by period' })
-  @ApiQuery({ name: 'year', required: true })
+  @ApiOperation({ summary: 'Get total weighted value by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
   async getTotalWeighted(
     @Query('year', ParseIntPipe) year: number,
@@ -165,19 +181,12 @@ export class HukumController {
       year,
       quarter,
     );
-    return { total };
-  }
-
-  // PERBAIKAN: Hanya ada satu method getSectionsByPeriod
-  @Get('sections/period')
-  @ApiOperation({ summary: 'Get strategik sections by period' })
-  @ApiQuery({ name: 'year', required: true, type: Number })
-  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
-  async getSectionsByPeriod(
-    @Query('year', ParseIntPipe) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    return await this.hukumService.findSectionsByPeriod(year, quarter);
+    return {
+      success: true,
+      year,
+      quarter,
+      total,
+    };
   }
 
   @Get('periods')
@@ -199,16 +208,15 @@ export class HukumController {
     }
   }
 
-  @Get('all-periods')
+  @Get('periods/with-counts')
   @ApiOperation({
-    summary: 'Get all periods with count',
-    description: 'Get periods with indicator counts',
+    summary: 'Get all periods with indicator counts',
+    description: 'Get periods with indicator counts for each period',
   })
-  async getAllPeriods() {
+  async getAllPeriodsWithCounts() {
     try {
       const periods = await this.hukumService.getPeriods();
 
-      // Hitung jumlah indikator per periode
       const periodsWithCounts = await Promise.all(
         periods.map(async (period) => {
           const count = await this.hukumService.getIndikatorCountByPeriod(
@@ -228,14 +236,39 @@ export class HukumController {
         count: periodsWithCounts.length,
       };
     } catch (error) {
-      console.error('Error in getAllPeriods:', error);
+      console.error('Error in getAllPeriodsWithCounts:', error);
       throw error;
     }
   }
 
+  @Get('indikators/count')
+  @ApiOperation({ summary: 'Get indikator count by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getIndikatorCount(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    const count = await this.hukumService.getIndikatorCountByPeriod(
+      year,
+      quarter,
+    );
+    return {
+      success: true,
+      year,
+      quarter,
+      count,
+    };
+  }
+
+  // ========== DUPLICATION ENDPOINT ==========
+  // Note: Frontend juga punya fitur cloning sendiri, endpoint ini opsional
   @Post('indikators/:id/duplicate')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Duplicate indikator to new period' })
+  @ApiOperation({
+    summary: 'Duplicate indikator to new period',
+    description: 'Copy an existing indikator to a different period',
+  })
   async duplicateIndikator(
     @Param('id', ParseIntPipe) id: number,
     @Query('year', ParseIntPipe) year: number,

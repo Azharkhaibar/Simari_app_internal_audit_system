@@ -150,7 +150,10 @@ export function computeDerived(nilai, param) {
       if (isGreaterThanFormat) {
         const match = highText.match(/(\d+(\.\d+)?)/);
         if (match) {
-          const threshold = Number(match[1]);
+          let threshold = Number(match[1]);
+          if (highText.includes('%')) {
+            threshold = threshold / 100;
+          }
           if (rawValue >= threshold) {
             peringkat = 5;
             matchedIndex = 0;
@@ -164,11 +167,13 @@ export function computeDerived(nilai, param) {
           const nums = rawText.match(/-?\d+(\.\d+)?/g);
           if (!nums || nums.length === 0) continue;
 
+          const hasPercent = rawText.includes('%');
           let min = -Infinity;
           let max = Infinity;
 
           if (nums.length === 1) {
-            const n = Number(nums[0]);
+            let n = Number(nums[0]);
+            if (hasPercent) n = n / 100;
             if (/≤|<=/.test(rawText)) max = n;
             else if (/≥|>=/.test(rawText)) min = n;
             else if (/^[xX]?\s*>|>\s*\d+/i.test(rawText)) {
@@ -182,8 +187,14 @@ export function computeDerived(nilai, param) {
               max = n;
             }
           } else {
-            min = Number(nums[0]);
-            max = Number(nums[1]);
+            let n1 = Number(nums[0]);
+            let n2 = Number(nums[1]);
+            if (hasPercent) {
+              n1 = n1 / 100;
+              n2 = n2 / 100;
+            }
+            min = n1;
+            max = n2;
           }
 
           if (rawValue >= min && rawValue <= max) {
@@ -229,11 +240,7 @@ export function computeDerived(nilai, param) {
 
     function finalizeDisplay(type) {
       if (!isNaN(rawValue)) {
-        hasilDisplay = rawValue.toFixed(2);
-
-        if (judul.percent) {
-          hasilDisplay += '%';
-        }
+        hasilDisplay = `${rawValue.toFixed(2)}%`;
         return;
       }
 

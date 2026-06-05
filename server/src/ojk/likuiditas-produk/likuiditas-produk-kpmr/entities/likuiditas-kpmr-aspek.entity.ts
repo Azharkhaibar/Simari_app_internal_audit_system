@@ -9,14 +9,15 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { KpmrLikuiditasOjk } from './likuiditas-produk-ojk.entity';
-import { KpmrPertanyaanLikuiditas } from './likuiditas-kpmr-pertanyaan.entity';
+import { KpmrLikuiditasProdukOjk } from './likuiditas-produk-kpmr-ojk.entity';
+import { KpmrPertanyaanLikuiditasProduk } from './likuiditas-kpmr-pertanyaan.entity';
+
 @Entity('kpmr_aspek_likuiditas')
 @Index(['kpmrOjkId', 'nomor'])
 @Index(['kpmrOjkId', 'orderIndex'])
 @Index(['kpmrOjkId', 'bobot'])
 @Index(['kpmrOjkId', 'createdAt'])
-export class KpmrAspekLikuiditas {
+export class KpmrAspekLikuiditasProduk {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -35,16 +36,20 @@ export class KpmrAspekLikuiditas {
   @Column({ name: 'kpmr_ojk_id' })
   kpmrOjkId: number;
 
-  @ManyToOne(() => KpmrLikuiditasOjk, (kpmr) => kpmr.aspekList, {
+  @ManyToOne(() => KpmrLikuiditasProdukOjk, (kpmr) => kpmr.aspekList, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'kpmr_ojk_id' })
-  kpmrOjk: KpmrLikuiditasOjk;
+  kpmrOjk: KpmrLikuiditasProdukOjk;
 
-  @OneToMany(() => KpmrPertanyaanLikuiditas, (pertanyaan) => pertanyaan.aspek, {
-    cascade: true,
-  })
-  pertanyaanList?: KpmrPertanyaanLikuiditas[];
+  @OneToMany(
+    () => KpmrPertanyaanLikuiditasProduk,
+    (pertanyaan) => pertanyaan.aspek,
+    {
+      cascade: true,
+    },
+  )
+  pertanyaanList?: KpmrPertanyaanLikuiditasProduk[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -8,13 +8,13 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { KpmrAspekLikuiditas } from './likuiditas-kpmr-aspek.entity';
+import { KpmrAspekLikuiditasProduk } from './likuiditas-kpmr-aspek.entity';
 
 @Entity('kpmr_pertanyaan_likuiditas')
-@Index(['aspekId', 'nomor'], { unique: false })
-@Index(['aspekId', 'orderIndex'], { unique: false })
+@Index(['aspekId', 'nomor'])
+@Index(['aspekId', 'orderIndex'])
 @Index(['aspekId', 'createdAt'])
-export class KpmrPertanyaanLikuiditas {
+export class KpmrPertanyaanLikuiditasProduk {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -50,11 +50,11 @@ export class KpmrPertanyaanLikuiditas {
   @Column({ name: 'aspek_id' })
   aspekId: number;
 
-  @ManyToOne(() => KpmrAspekLikuiditas, (aspek) => aspek.pertanyaanList, {
+  @ManyToOne(() => KpmrAspekLikuiditasProduk, (aspek) => aspek.pertanyaanList, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'aspek_id' })
-  aspek: KpmrAspekLikuiditas;
+  aspek: KpmrAspekLikuiditasProduk;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

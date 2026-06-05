@@ -13,10 +13,10 @@ import { KpmrStrategisOjk } from './strategis-kpmr-ojk.entity';
 import { KpmrPertanyaanStrategis } from './strategis-kpmr-pertanyaan.entity';
 
 @Entity('kpmr_aspek_strategis')
-@Index(['kpmrStrategisId', 'nomor'], { unique: false })
-@Index(['kpmrStrategisId', 'orderIndex'], { unique: false })
-@Index(['kpmrStrategisId', 'bobot'])
-@Index(['kpmrStrategisId', 'createdAt'])
+@Index(['kpmrOjkId', 'nomor'])
+@Index(['kpmrOjkId', 'orderIndex'])
+@Index(['kpmrOjkId', 'bobot'])
+@Index(['kpmrOjkId', 'createdAt'])
 export class KpmrAspekStrategis {
   @PrimaryGeneratedColumn()
   id: number;
@@ -24,32 +24,26 @@ export class KpmrAspekStrategis {
   @Column({ nullable: true })
   nomor?: string;
 
-  @Column({ nullable: false })
+  @Column()
   judul: string;
 
-  @Column('decimal', {
-    precision: 10,
-    scale: 2,
-    nullable: false,
-    default: 0,
-  })
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
   bobot: number;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'text', nullable: true })
   deskripsi?: string;
 
-  @Column({ name: 'kpmr_strategis_id' })
-  kpmrStrategisId: number;
+  @Column({ name: 'kpmr_ojk_id' })
+  kpmrOjkId: number;
 
   @ManyToOne(() => KpmrStrategisOjk, (kpmr) => kpmr.aspekList, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'kpmr_strategis_id' })
-  kpmrStrategis: KpmrStrategisOjk;
+  @JoinColumn({ name: 'kpmr_ojk_id' })
+  kpmrOjk: KpmrStrategisOjk;
 
   @OneToMany(() => KpmrPertanyaanStrategis, (pertanyaan) => pertanyaan.aspek, {
     cascade: true,
-    eager: false,
   })
   pertanyaanList?: KpmrPertanyaanStrategis[];
 
@@ -76,6 +70,6 @@ export class KpmrAspekStrategis {
   @Column({ nullable: true, name: 'updated_by' })
   updatedBy?: string;
 
-  @Column({ nullable: true, type: 'text' })
+  @Column({ type: 'text', nullable: true })
   notes?: string;
 }

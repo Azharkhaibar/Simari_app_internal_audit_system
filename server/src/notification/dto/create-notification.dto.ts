@@ -6,13 +6,14 @@ import {
   IsDate,
   IsObject,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { NotificationType } from '../entities/notification.entity';
 
 export class CreateNotificationDto {
   @IsNumber()
   @IsOptional()
   @Type(() => Number)
+  @Transform(({ value }) => (value === null ? null : Number(value)))
   user_id?: number | null;
 
   @IsEnum(NotificationType)

@@ -1,4 +1,4 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/services/strategik.service.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Stratejik/services/stratejik.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -6,52 +6,49 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Like, Not } from 'typeorm';
-import { StrategikSection } from './entities/stratejik-section.entity';
+import { Repository, Like, Not } from 'typeorm';
+import { StratejikSection } from './entities/stratejik-section.entity';
 import {
-  Strategik,
+  Stratejik,
   CalculationMode,
   Quarter,
 } from './entities/stratejik.entity';
-import { CreateStrategikSectionDto } from './dto/create-stratejik-section.dto';
-import { UpdateStrategikSectionDto } from './dto/update-stratejik-section.dto';
-import { CreateStrategikDto } from './dto/create-stratejik.dto';
-import { UpdateStrategikDto } from './dto/update-stratejik.dto';
+import { CreateStratejikDto } from './dto/create-stratejik.dto';
+import { UpdateStratejikSectionDto } from './dto/update-stratejik-section.dto';
+import { UpdateStratejikDto } from './dto/update-stratejik.dto';
+import { CreateStratejikSectionDto } from './dto/create-stratejik-section.dto';
 
 @Injectable()
-export class StrategikService {
+export class StratejikService {
   constructor(
-    @InjectRepository(StrategikSection)
-    private readonly strategikSectionRepository: Repository<StrategikSection>,
+    @InjectRepository(StratejikSection)
+    private readonly stratejikSectionRepository: Repository<StratejikSection>,
 
-    @InjectRepository(Strategik)
-    private readonly strategikRepository: Repository<Strategik>,
+    @InjectRepository(Stratejik)
+    private readonly stratejikRepository: Repository<Stratejik>,
   ) {}
 
   // ========== SECTION SERVICES ==========
 
   async createSection(
-    createDto: CreateStrategikSectionDto,
+    createDto: CreateStratejikSectionDto,
     createdBy?: string,
-  ): Promise<StrategikSection> {
-    // 1. Cek apakah ada data yang sudah dihapus dengan no+parameter+year+quarter yang sama
-    const deletedSection = await this.strategikSectionRepository.findOne({
+  ): Promise<StratejikSection> {
+    const deletedSection = await this.stratejikSectionRepository.findOne({
       where: {
         no: createDto.no,
         parameter: createDto.parameter,
         year: createDto.year,
         quarter: createDto.quarter,
-        isDeleted: true, // Hanya cek yang sudah dihapus
+        isDeleted: true,
       },
     });
 
-    // 2. Jika ada data yang sudah dihapus, REACTIVATE data tersebut
     if (deletedSection) {
       console.log(
         `🔄 Reactivating deleted section: ${deletedSection.no} - ${deletedSection.parameter}`,
       );
 
-      // Reactivate section yang sudah dihapus
       deletedSection.isDeleted = false;
       deletedSection.isActive = createDto.isActive ?? true;
       deletedSection.bobotSection =
@@ -62,21 +59,19 @@ export class StrategikService {
         createDto.sortOrder || deletedSection.sortOrder;
 
       if (createdBy) {
-        deletedSection['updatedBy'] = createdBy;
-        deletedSection['updatedAt'] = new Date();
+        deletedSection.updatedBy = createdBy;
       }
 
-      return await this.strategikSectionRepository.save(deletedSection);
+      return await this.stratejikSectionRepository.save(deletedSection);
     }
 
-    // 3. Cek duplikasi hanya untuk data yang TIDAK dihapus
-    const existingSection = await this.strategikSectionRepository.findOne({
+    const existingSection = await this.stratejikSectionRepository.findOne({
       where: {
         no: createDto.no,
         parameter: createDto.parameter,
         year: createDto.year,
         quarter: createDto.quarter,
-        isDeleted: false, // Hanya cek yang tidak dihapus
+        isDeleted: false,
       },
     });
 
@@ -86,8 +81,7 @@ export class StrategikService {
       );
     }
 
-    // 4. Jika tidak ada data sama sekali, buat baru
-    const sectionData: Partial<StrategikSection> = {
+    const sectionData: Partial<StratejikSection> = {
       no: createDto.no,
       parameter: createDto.parameter,
       bobotSection: createDto.bobotSection || 100,
@@ -100,39 +94,33 @@ export class StrategikService {
     };
 
     if (createdBy) {
-      sectionData['createdBy'] = createdBy;
+      sectionData.createdBy = createdBy;
     }
 
-    const section = this.strategikSectionRepository.create(sectionData);
-    return await this.strategikSectionRepository.save(section);
+    const section = this.stratejikSectionRepository.create(sectionData);
+    return await this.stratejikSectionRepository.save(section);
   }
 
-  async findAllSections(isActive?: boolean): Promise<StrategikSection[]> {
-    const where: any = { isDeleted: false }; // Hanya ambil yang tidak dihapus
+  async findAllSections(isActive?: boolean): Promise<StratejikSection[]> {
+    const where: any = { isDeleted: false };
 
     if (isActive !== undefined) {
       where.isActive = isActive;
     }
 
-    return await this.strategikSectionRepository.find({
+    return await this.stratejikSectionRepository.find({
       where,
       order: { year: 'DESC', quarter: 'DESC', sortOrder: 'ASC', no: 'ASC' },
     });
   }
 
-  // PERBAIKAN: Tambahkan method findSectionById yang hilang
-  async findSectionById(id: number): Promise<StrategikSection> {
+  async findSectionById(id: number): Promise<StratejikSection> {
     try {
-      console.log(`🔍 [SERVICE] Finding section by ID: ${id}`);
-
-      // Cari dengan query builder untuk menghindari naming issues
-      const section = await this.strategikSectionRepository
+      const section = await this.stratejikSectionRepository
         .createQueryBuilder('section')
         .where('section.id = :id', { id })
         .andWhere('section.is_deleted = false')
         .getOne();
-
-      console.log(`🔍 [SERVICE] Found section:`, section);
 
       if (!section) {
         throw new NotFoundException(`Section dengan ID ${id} tidak ditemukan`);
@@ -148,12 +136,12 @@ export class StrategikService {
   async findSectionsByPeriod(
     year: number,
     quarter: Quarter,
-  ): Promise<StrategikSection[]> {
-    return await this.strategikSectionRepository.find({
+  ): Promise<StratejikSection[]> {
+    return await this.stratejikSectionRepository.find({
       where: {
         year,
         quarter,
-        isDeleted: false, // Hanya ambil yang tidak dihapus
+        isDeleted: false,
         isActive: true,
       },
       order: { sortOrder: 'ASC', no: 'ASC' },
@@ -162,26 +150,24 @@ export class StrategikService {
 
   async updateSection(
     id: number,
-    updateDto: UpdateStrategikSectionDto,
+    updateDto: UpdateStratejikSectionDto,
     updatedBy?: string,
-  ): Promise<StrategikSection> {
+  ): Promise<StratejikSection> {
     const section = await this.findSectionById(id);
 
-    // Jika ada perubahan no/parameter/year/quarter, cek duplikasi
     const checkNo = updateDto.no || section.no;
     const checkParam = updateDto.parameter || section.parameter;
     const checkYear = updateDto.year || section.year;
     const checkQuarter = updateDto.quarter || section.quarter;
 
-    // Cek apakah ada section lain dengan no+parameter+year+quarter yang sama
-    const existing = await this.strategikSectionRepository.findOne({
+    const existing = await this.stratejikSectionRepository.findOne({
       where: {
         no: checkNo,
         parameter: checkParam,
         year: checkYear,
         quarter: checkQuarter,
         isDeleted: false,
-        id: Not(id), // Exclude current section
+        id: Not(id),
       },
     });
 
@@ -191,7 +177,6 @@ export class StrategikService {
       );
     }
 
-    // Update field
     if (updateDto.no !== undefined) section.no = updateDto.no;
     if (updateDto.parameter !== undefined)
       section.parameter = updateDto.parameter;
@@ -206,15 +191,16 @@ export class StrategikService {
     if (updateDto.quarter !== undefined) section.quarter = updateDto.quarter;
 
     if (updatedBy) {
-      // Jika ada updatedBy field di entity
-      section['updatedBy'] = updatedBy;
+      section.updatedBy = updatedBy;
     }
 
-    return await this.strategikSectionRepository.save(section);
+    return await this.stratejikSectionRepository.save(section);
   }
 
-  async deleteSection(id: number): Promise<void> {
-    const section = await this.strategikSectionRepository.findOne({
+  async deleteSection(
+    id: number,
+  ): Promise<{ success: boolean; message: string }> {
+    const section = await this.stratejikSectionRepository.findOne({
       where: { id },
     });
 
@@ -222,8 +208,8 @@ export class StrategikService {
       throw new NotFoundException(`Section dengan ID ${id} tidak ditemukan`);
     }
 
-    const countIndikator = await this.strategikRepository.count({
-      where: { sectionId: id },
+    const countIndikator = await this.stratejikRepository.count({
+      where: { sectionId: id, isDeleted: false },
     });
 
     if (countIndikator > 0) {
@@ -232,37 +218,38 @@ export class StrategikService {
       );
     }
 
-    // ✅ HARD DELETE SAJA
-    await this.strategikSectionRepository.delete(id);
+    section.isDeleted = true;
+    await this.stratejikSectionRepository.save(section);
+
+    return {
+      success: true,
+      message: `Section "${section.parameter}" berhasil dihapus`,
+    };
   }
 
-  // ========== STRATEGIK (INDIKATOR) SERVICES ==========
+  // ========== INDIKATOR SERVICES ==========
 
   async createIndikator(
-    createDto: CreateStrategikDto,
+    createDto: CreateStratejikDto,
     createdBy?: string,
-  ): Promise<Strategik> {
-    // 1. Validasi section exist
+  ): Promise<Stratejik> {
     const section = await this.findSectionById(createDto.sectionId);
 
-    // 2. Cek apakah ada indikator yang sudah dihapus dengan data yang sama
-    const deletedIndikator = await this.strategikRepository.findOne({
+    const deletedIndikator = await this.stratejikRepository.findOne({
       where: {
         year: createDto.year,
         quarter: createDto.quarter,
         sectionId: createDto.sectionId,
         subNo: createDto.subNo,
-        isDeleted: true, // Hanya cek yang sudah dihapus
+        isDeleted: true,
       },
     });
 
-    // 3. Jika ada data yang sudah dihapus, REACTIVATE
     if (deletedIndikator) {
       console.log(
         `🔄 Reactivating deleted indicator: ${deletedIndikator.subNo} - ${deletedIndikator.indikator}`,
       );
 
-      // Update data dengan nilai baru
       deletedIndikator.isDeleted = false;
       deletedIndikator.indikator = createDto.indikator;
       deletedIndikator.bobotIndikator = createDto.bobotIndikator;
@@ -279,7 +266,6 @@ export class StrategikService {
       deletedIndikator.hasilText = createDto.hasilText || null;
       deletedIndikator.peringkat = createDto.peringkat;
 
-      // Hitung weighted baru
       deletedIndikator.weighted =
         createDto.weighted ||
         this.calculateWeighted(
@@ -295,17 +281,16 @@ export class StrategikService {
         deletedIndikator.updatedBy = createdBy;
       }
 
-      return await this.strategikRepository.save(deletedIndikator);
+      return await this.stratejikRepository.save(deletedIndikator);
     }
 
-    // 4. Cek duplikasi hanya untuk data yang TIDAK dihapus
-    const existingIndikator = await this.strategikRepository.findOne({
+    const existingIndikator = await this.stratejikRepository.findOne({
       where: {
         year: createDto.year,
         quarter: createDto.quarter,
         sectionId: createDto.sectionId,
         subNo: createDto.subNo,
-        isDeleted: false, // Hanya cek yang tidak dihapus
+        isDeleted: false,
       },
     });
 
@@ -315,10 +300,8 @@ export class StrategikService {
       );
     }
 
-    // 5. Validasi mode-specific fields
     this.validateModeSpecificFields(createDto);
 
-    // 6. Hitung weighted jika belum diisi
     const weighted =
       createDto.weighted ||
       this.calculateWeighted(
@@ -327,8 +310,7 @@ export class StrategikService {
         createDto.peringkat,
       );
 
-    // 7. Handle nullable fields
-    const strategikData: Partial<Strategik> = {
+    const stratejikData: Partial<Stratejik> = {
       year: createDto.year,
       quarter: createDto.quarter,
       sectionId: createDto.sectionId,
@@ -363,18 +345,18 @@ export class StrategikService {
     };
 
     if (createdBy) {
-      strategikData.createdBy = createdBy;
+      stratejikData.createdBy = createdBy;
     }
 
-    const strategik = this.strategikRepository.create(strategikData);
-    return await this.strategikRepository.save(strategik);
+    const stratejik = this.stratejikRepository.create(stratejikData);
+    return await this.stratejikRepository.save(stratejik);
   }
 
   async findIndikatorsByPeriod(
     year: number,
     quarter: Quarter,
-  ): Promise<Strategik[]> {
-    return await this.strategikRepository.find({
+  ): Promise<Stratejik[]> {
+    return await this.stratejikRepository.find({
       where: {
         year,
         quarter,
@@ -388,8 +370,8 @@ export class StrategikService {
     });
   }
 
-  async findAllIndikators(): Promise<Strategik[]> {
-    return await this.strategikRepository.find({
+  async findAllIndikators(): Promise<Stratejik[]> {
+    return await this.stratejikRepository.find({
       where: { isDeleted: false },
       relations: ['section'],
       order: {
@@ -401,8 +383,8 @@ export class StrategikService {
     });
   }
 
-  async findIndikatorById(id: number): Promise<Strategik> {
-    const indikator = await this.strategikRepository.findOne({
+  async findIndikatorById(id: number): Promise<Stratejik> {
+    const indikator = await this.stratejikRepository.findOne({
       where: { id, isDeleted: false },
       relations: ['section'],
     });
@@ -416,22 +398,19 @@ export class StrategikService {
 
   async updateIndikator(
     id: number,
-    updateDto: UpdateStrategikDto,
+    updateDto: UpdateStratejikDto,
     updatedBy?: string,
-  ): Promise<Strategik> {
+  ): Promise<Stratejik> {
     const indikator = await this.findIndikatorById(id);
 
-    // 1. Validasi jika ada perubahan sectionId
     if (updateDto.sectionId && updateDto.sectionId !== indikator.sectionId) {
       const newSection = await this.findSectionById(updateDto.sectionId);
 
-      // Update data section yang denormalized
       updateDto.no = newSection.no;
       updateDto.sectionLabel = newSection.parameter;
       updateDto.bobotSection = newSection.bobotSection;
     }
 
-    // 2. Validasi jika ada perubahan periode atau subNo
     if (
       (updateDto.year && updateDto.year !== indikator.year) ||
       (updateDto.quarter && updateDto.quarter !== indikator.quarter) ||
@@ -442,14 +421,14 @@ export class StrategikService {
       const sectionId = updateDto.sectionId || indikator.sectionId;
       const subNo = updateDto.subNo || indikator.subNo;
 
-      const existing = await this.strategikRepository.findOne({
+      const existing = await this.stratejikRepository.findOne({
         where: {
           year,
           quarter,
           sectionId,
           subNo,
           isDeleted: false,
-          id: Not(id), // Exclude current
+          id: Not(id),
         },
       });
 
@@ -460,9 +439,8 @@ export class StrategikService {
       }
     }
 
-    // 3. Validasi mode-specific fields
     if (updateDto.mode) {
-      const validationDto: Partial<CreateStrategikDto> = {
+      const validationDto: Partial<CreateStratejikDto> = {
         mode: updateDto.mode,
         pembilangValue: updateDto.pembilangValue,
         penyebutValue: updateDto.penyebutValue,
@@ -471,28 +449,20 @@ export class StrategikService {
       this.validateModeSpecificFields(validationDto);
     }
 
-    // 4. Hitung weighted baru jika ada perubahan bobot/peringkat
-    if (
-      updateDto.bobotSection ||
-      updateDto.bobotIndikator ||
-      updateDto.peringkat
-    ) {
-      const bobotSection = updateDto.bobotSection || indikator.bobotSection;
+    if (updateDto.bobotIndikator || updateDto.peringkat) {
       const bobotIndikator =
         updateDto.bobotIndikator || indikator.bobotIndikator;
       const peringkat = updateDto.peringkat || indikator.peringkat;
 
       updateDto.weighted = this.calculateWeighted(
-        bobotSection,
+        indikator.bobotSection,
         bobotIndikator,
         peringkat,
       );
     }
 
-    // 5. Update field yang ada di updateDto
     Object.keys(updateDto).forEach((key) => {
       if (updateDto[key] !== undefined) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         indikator[key] = updateDto[key];
       }
     });
@@ -502,11 +472,13 @@ export class StrategikService {
       indikator.version += 1;
     }
 
-    return await this.strategikRepository.save(indikator);
+    return await this.stratejikRepository.save(indikator);
   }
 
-  async deleteIndikator(id: number): Promise<void> {
-    const indikator = await this.strategikRepository.findOne({
+  async deleteIndikator(
+    id: number,
+  ): Promise<{ success: boolean; message: string }> {
+    const indikator = await this.stratejikRepository.findOne({
       where: { id },
     });
 
@@ -514,20 +486,24 @@ export class StrategikService {
       throw new NotFoundException(`Indikator dengan ID ${id} tidak ditemukan`);
     }
 
-    // ✅ HAPUS INDIKATOR, BUKAN SECTION
-    await this.strategikRepository.delete(id);
+    indikator.isDeleted = true;
+    indikator.deletedAt = new Date();
+    await this.stratejikRepository.save(indikator);
+
+    return {
+      success: true,
+      message: `Indikator "${indikator.indikator}" (${indikator.subNo}) berhasil dihapus`,
+    };
   }
 
   async searchIndikators(
     query?: string,
     year?: number,
     quarter?: Quarter,
-  ): Promise<Strategik[]> {
+  ): Promise<Stratejik[]> {
     const where: any = { isDeleted: false };
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (year) where.year = year;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (quarter) where.quarter = quarter;
 
     if (query) {
@@ -540,13 +516,13 @@ export class StrategikService {
         { hasilText: Like(`%${query}%`), ...where },
       ];
 
-      return await this.strategikRepository.find({
+      return await this.stratejikRepository.find({
         where: searchConditions,
         relations: ['section'],
       });
     }
 
-    return await this.strategikRepository.find({
+    return await this.stratejikRepository.find({
       where,
       relations: ['section'],
     });
@@ -556,124 +532,18 @@ export class StrategikService {
     year: number,
     quarter: Quarter,
   ): Promise<number> {
-    const result = await this.strategikRepository
-      .createQueryBuilder('strategik')
-      .select('SUM(strategik.weighted)', 'total')
-      .where('strategik.year = :year', { year })
-      .andWhere('strategik.quarter = :quarter', { quarter })
-      .andWhere('strategik.is_deleted = false')
+    const result = await this.stratejikRepository
+      .createQueryBuilder('stratejik')
+      .select('SUM(stratejik.weighted)', 'total')
+      .where('stratejik.year = :year', { year })
+      .andWhere('stratejik.quarter = :quarter', { quarter })
+      .andWhere('stratejik.is_deleted = false')
       .getRawOne();
 
     return parseFloat(result?.total || 0) || 0;
   }
 
-  // ========== HELPER METHODS ==========
-
-  private validateModeSpecificFields(dto: Partial<CreateStrategikDto>): void {
-    const mode = dto.mode;
-
-    if (mode === CalculationMode.RASIO) {
-      if (dto.pembilangValue !== undefined && dto.pembilangValue < 0) {
-        throw new BadRequestException(
-          'Pembilang value tidak boleh negatif untuk mode RASIO',
-        );
-      }
-      if (dto.penyebutValue !== undefined && dto.penyebutValue <= 0) {
-        throw new BadRequestException(
-          'Penyebut value harus lebih besar dari 0 untuk mode RASIO',
-        );
-      }
-    } else if (mode === CalculationMode.NILAI_TUNGGAL) {
-      if (dto.penyebutValue !== undefined && dto.penyebutValue < 0) {
-        throw new BadRequestException(
-          'Nilai penyebut tidak boleh negatif untuk mode NILAI_TUNGGAL',
-        );
-      }
-    } else if (mode === CalculationMode.TEKS) {
-      // Untuk mode TEKS, hasil harus berupa text
-      if (!dto.hasilText && !dto.hasilText?.trim()) {
-        throw new BadRequestException('Hasil text wajib diisi untuk mode TEKS');
-      }
-    }
-  }
-
-  private calculateWeighted(
-    bobotSection: number,
-    bobotIndikator: number,
-    peringkat: number,
-  ): number {
-    // Formula: (bobotSection * bobotIndikator * peringkat) / 10000
-    return (bobotSection * bobotIndikator * peringkat) / 10000;
-  }
-
-  async duplicateIndikatorToNewPeriod(
-    sourceId: number,
-    targetYear: number,
-    targetQuarter: Quarter,
-    createdBy?: string,
-  ): Promise<Strategik> {
-    const source = await this.findIndikatorById(sourceId);
-
-    // Cek apakah sudah ada di periode target
-    const existing = await this.strategikRepository.findOne({
-      where: {
-        year: targetYear,
-        quarter: targetQuarter,
-        sectionId: source.sectionId,
-        subNo: source.subNo,
-        isDeleted: false,
-      },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        `Indikator dengan subNo "${source.subNo}" sudah ada pada periode ${targetYear}-${targetQuarter}`,
-      );
-    }
-
-    // Duplikasi dengan periode baru
-    const newIndikatorData: Partial<Strategik> = {
-      ...source,
-      id: undefined,
-      year: targetYear,
-      quarter: targetQuarter,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: 1,
-      revisionNotes: `Duplikasi dari periode ${source.year}-${source.quarter}`,
-      isDeleted: false,
-    };
-
-    if (createdBy) {
-      newIndikatorData.createdBy = createdBy;
-    }
-
-    const newIndikator = this.strategikRepository.create(newIndikatorData);
-    return await this.strategikRepository.save(newIndikator);
-  }
-
-  // ========== ADDITIONAL METHODS ==========
-
-  // PERBAIKAN: Hapus deklarasi duplikat dan implementasi method
-  async getIndikatorCountByPeriod(
-    year: number,
-    quarter: Quarter,
-  ): Promise<number> {
-    try {
-      const result = await this.strategikRepository
-        .createQueryBuilder('strategik')
-        .select('COUNT(strategik.id)', 'count')
-        .where('strategik.year = :year', { year })
-        .andWhere('strategik.quarter = :quarter', { quarter })
-        .andWhere('strategik.is_deleted = false')
-        .getRawOne();
-
-      return parseInt(result?.count || 0) || 0;
-    } catch (error) {
-      console.error('Error in getIndikatorCountByPeriod:', error);
-      return 0;
-    }
-  }
+  // ========== COMPLEX QUERIES ==========
 
   async getSectionsWithIndicatorsByPeriod(
     year: number,
@@ -684,8 +554,7 @@ export class StrategikService {
         `Loading sections with indicators for period: ${year}-${quarter}`,
       );
 
-      // 1. Ambil sections untuk periode ini saja
-      const sections = await this.strategikSectionRepository.find({
+      const sections = await this.stratejikSectionRepository.find({
         where: {
           year,
           quarter,
@@ -701,7 +570,7 @@ export class StrategikService {
 
       const sectionsWithIndicators = await Promise.all(
         sections.map(async (section) => {
-          const indicators = await this.strategikRepository.find({
+          const indicators = await this.stratejikRepository.find({
             where: {
               sectionId: section.id,
               year,
@@ -760,7 +629,6 @@ export class StrategikService {
         }),
       );
 
-      // Filter hanya sections yang punya indikator
       const sectionsWithData = sectionsWithIndicators.filter(
         (s) => s.indicators.length > 0,
       );
@@ -790,18 +658,119 @@ export class StrategikService {
   }
 
   async getPeriods(): Promise<Array<{ year: number; quarter: Quarter }>> {
-    const periods = await this.strategikRepository
-      .createQueryBuilder('strategik')
-      .select(['strategik.year', 'strategik.quarter'])
-      .where('strategik.is_deleted = false')
-      .groupBy('strategik.year, strategik.quarter')
-      .orderBy('strategik.year', 'DESC')
-      .addOrderBy('strategik.quarter', 'DESC')
+    const periods = await this.stratejikRepository
+      .createQueryBuilder('stratejik')
+      .select(['stratejik.year', 'stratejik.quarter'])
+      .where('stratejik.is_deleted = false')
+      .groupBy('stratejik.year, stratejik.quarter')
+      .orderBy('stratejik.year', 'DESC')
+      .addOrderBy('stratejik.quarter', 'DESC')
       .getRawMany();
 
     return periods.map((p) => ({
-      year: p.strategik_year,
-      quarter: p.strategik_quarter,
+      year: p.stratejik_year,
+      quarter: p.stratejik_quarter,
     }));
+  }
+
+  async getIndikatorCountByPeriod(
+    year: number,
+    quarter: Quarter,
+  ): Promise<number> {
+    try {
+      const result = await this.stratejikRepository
+        .createQueryBuilder('stratejik')
+        .select('COUNT(stratejik.id)', 'count')
+        .where('stratejik.year = :year', { year })
+        .andWhere('stratejik.quarter = :quarter', { quarter })
+        .andWhere('stratejik.is_deleted = false')
+        .getRawOne();
+
+      return parseInt(result?.count || 0) || 0;
+    } catch (error) {
+      console.error('Error in getIndikatorCountByPeriod:', error);
+      return 0;
+    }
+  }
+
+  async duplicateIndikatorToNewPeriod(
+    sourceId: number,
+    targetYear: number,
+    targetQuarter: Quarter,
+    createdBy?: string,
+  ): Promise<Stratejik> {
+    const source = await this.findIndikatorById(sourceId);
+
+    const existing = await this.stratejikRepository.findOne({
+      where: {
+        year: targetYear,
+        quarter: targetQuarter,
+        sectionId: source.sectionId,
+        subNo: source.subNo,
+        isDeleted: false,
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        `Indikator dengan subNo "${source.subNo}" sudah ada pada periode ${targetYear}-${targetQuarter}`,
+      );
+    }
+
+    const newIndikatorData: Partial<Stratejik> = {
+      ...source,
+      id: undefined,
+      year: targetYear,
+      quarter: targetQuarter,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      version: 1,
+      revisionNotes: `Duplikasi dari periode ${source.year}-${source.quarter}`,
+      isDeleted: false,
+    };
+
+    if (createdBy) {
+      newIndikatorData.createdBy = createdBy;
+    }
+
+    const newIndikator = this.stratejikRepository.create(newIndikatorData);
+    return await this.stratejikRepository.save(newIndikator);
+  }
+
+  // ========== HELPER METHODS ==========
+
+  private validateModeSpecificFields(dto: Partial<CreateStratejikDto>): void {
+    const mode = dto.mode;
+
+    if (mode === CalculationMode.RASIO) {
+      if (dto.pembilangValue !== undefined && dto.pembilangValue < 0) {
+        throw new BadRequestException(
+          'Pembilang value tidak boleh negatif untuk mode RASIO',
+        );
+      }
+      if (dto.penyebutValue !== undefined && dto.penyebutValue <= 0) {
+        throw new BadRequestException(
+          'Penyebut value harus lebih besar dari 0 untuk mode RASIO',
+        );
+      }
+    } else if (mode === CalculationMode.NILAI_TUNGGAL) {
+      if (dto.penyebutValue !== undefined && dto.penyebutValue < 0) {
+        throw new BadRequestException(
+          'Nilai penyebut tidak boleh negatif untuk mode NILAI_TUNGGAL',
+        );
+      }
+    } else if (mode === CalculationMode.TEKS) {
+      if (!dto.hasilText || !dto.hasilText.trim()) {
+        throw new BadRequestException('Hasil text wajib diisi untuk mode TEKS');
+      }
+    }
+  }
+
+  private calculateWeighted(
+    bobotSection: number,
+    bobotIndikator: number,
+    peringkat: number,
+  ): number {
+    return (bobotSection * bobotIndikator * peringkat) / 10000;
   }
 }

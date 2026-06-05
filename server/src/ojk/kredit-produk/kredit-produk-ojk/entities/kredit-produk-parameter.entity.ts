@@ -9,13 +9,14 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { KreditProdukOjk } from './kredit-produk-ojk.entity';
+import { Kredit } from './kredit-produk-ojk.entity';
 import { KreditNilai } from './kredit-produk-nilai.entity';
 
-@Entity('kredit_parameters')
-@Index(['kreditProdukOjkId', 'nomor'], { unique: false })
+@Entity('kredit_parameters_ojk')
+@Index(['kreditId', 'nomor'])
+@Index(['kreditId', 'orderIndex'])
 export class KreditParameter {
-  @PrimaryGeneratedColumn() 
+  @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ nullable: true })
@@ -35,17 +36,15 @@ export class KreditParameter {
     underlying?: string[];
   };
 
-  // Foreign key ke KreditProdukOjk
-  @Column({ name: 'kredit_produk_ojk_id' })
-  kreditProdukOjkId: number;
+  @Column({ name: 'kredit_ojk_id' })
+  kreditId: number;
 
-  @ManyToOne(() => KreditProdukOjk, (kredit) => kredit.parameters, {
+  @ManyToOne(() => Kredit, (kredit) => kredit.parameters, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'kredit_produk_ojk_id' })
-  kreditProdukOjk: KreditProdukOjk;
+  @JoinColumn({ name: 'kredit_ojk_id' })
+  kredit: Kredit;
 
-  // Relasi ke nilai
   @OneToMany(() => KreditNilai, (nilai) => nilai.parameter, {
     cascade: true,
   })

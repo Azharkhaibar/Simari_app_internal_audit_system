@@ -12,6 +12,8 @@ import { useDropdownPortal } from '../components/usedropdownportal';
 import PopUpDelete from '../components/popup-delete';
 import { useToast } from '../components/use-toast';
 import useKpmrKepatuhan from '../hooks/kpmr/kepatuhan-kpmr.hook';
+import { useAuditLog } from '../../../../../audit-log/hooks/audit-log.hooks';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 // ==================== HELPER FUNCTION ====================
 const formatQuarter = (quarter) => {
   if (!quarter && quarter !== 0) return 'Q1';
@@ -51,6 +53,24 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
   });
 
   const { addPertanyaan, updatePertanyaan, deletePertanyaan, updateSkor, saving, refreshKpmrData } = useKpmrKepatuhan();
+
+  // ===== AUDIT LOG =====
+  const year = useHeaderStore((s) => s.year);
+  const { logCreate, logUpdate, logDelete } = useAuditLog();
+  const { authUser } = useAuth();
+  const getCurrentUser = () => {
+    if (authUser && authUser.user_id) {
+      return { id: authUser.user_id, name: authUser.userID || authUser.username || 'Unknown', role: authUser.role || 'User' };
+    }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) {
+        return { id: storedUser.user_id, name: storedUser.userID || storedUser.username || 'Unknown', role: storedUser.role || 'User' };
+      }
+    } catch (e) { console.warn('Cannot parse user from localStorage:', e); }
+    return { id: null, name: 'System', role: 'System' };
+  };
+  const currentUser = getCurrentUser();
 
   const formattedQuarter = useMemo(() => formatQuarter(activeQuarter), [activeQuarter]);
   const quarterKey = formattedQuarter;
@@ -202,11 +222,21 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
           onRefreshData(refreshedRows);
         }
         toast({ title: 'Berhasil', description: 'Pertanyaan berhasil diperbarui' });
+        await logUpdate('KEPATUHAN_OJK', `Update Pertanyaan Aspek ID: ${aspekId} - Nomor: ${updatedPertanyaan.nomor || '-'}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId: pertanyaan.id }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal mengupdate pertanyaan', variant: 'destructive' });
+        await logUpdate('KEPATUHAN_OJK', `Gagal Update Pertanyaan Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId: pertanyaan.id, error: error.message }
+        });
       }
     },
-    [aspekId, safeActivePertanyaanIndex, pertanyaanList, updatePertanyaan, refreshKpmrData, onRefreshData, toast],
+    [aspekId, safeActivePertanyaanIndex, pertanyaanList, updatePertanyaan, refreshKpmrData, onRefreshData, toast, logUpdate, currentUser, year, formattedQuarter],
   );
 
   const handleSkorChange = useCallback(
@@ -240,11 +270,21 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
         }
 
         toast({ title: 'Berhasil', description: 'Skor berhasil diperbarui' });
+        await logUpdate('KEPATUHAN_OJK', `Update Skor Pertanyaan ID: ${pertanyaan.id} (${quarterKey}) menjadi: ${skorNum}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId: pertanyaan.id, skor: skorNum }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal mengupdate skor', variant: 'destructive' });
+        await logUpdate('KEPATUHAN_OJK', `Gagal Update Skor Pertanyaan ID: ${pertanyaan.id} (${quarterKey})`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId: pertanyaan.id, error: error.message }
+        });
       }
     },
-    [aspekId, safeActivePertanyaanIndex, pertanyaanList, quarterKey, updateSkor, onRefreshData, toast, aspekData],
+    [aspekId, safeActivePertanyaanIndex, pertanyaanList, quarterKey, updateSkor, onRefreshData, toast, aspekData, logUpdate, currentUser, year, formattedQuarter],
   );
 
   const handleDraftSkorChange = useCallback(
@@ -325,10 +365,20 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       setEditModePertanyaan(true);
       setOriginalPertanyaan(null);
       setDraftPertanyaan(createEmptyPertanyaan());
+      await logCreate('KEPATUHAN_OJK', `Tambah Pertanyaan Baru pada Aspek ID: ${aspekId} - Nomor: ${pertanyaanToAdd.nomor || '-'}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal menambahkan pertanyaan', variant: 'destructive' });
+      await logCreate('KEPATUHAN_OJK', `Gagal Tambah Pertanyaan Baru pada Aspek ID: ${aspekId}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, error: error.message }
+      });
     }
-  }, [aspekId, draftPertanyaan, pertanyaanList, quarterKey, addPertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData]);
+  }, [aspekId, draftPertanyaan, pertanyaanList, quarterKey, addPertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData, logCreate, currentUser, year, formattedQuarter]);
 
   const handleUpdatePertanyaan = useCallback(async () => {
     if (!aspekId || safeActivePertanyaanIndex === -1 || !draftPertanyaan) return;
@@ -380,10 +430,20 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       setEditModePertanyaan(false);
       setOriginalPertanyaan(null);
       setDraftPertanyaan(null);
+      await logUpdate('KEPATUHAN_OJK', `Update Detail Pertanyaan ID: ${pertanyaan.id} - Nomor: ${pertanyaanToUpdate.nomor || '-'}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId: pertanyaan.id }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal mengupdate pertanyaan', variant: 'destructive' });
+      await logUpdate('KEPATUHAN_OJK', `Gagal Update Detail Pertanyaan ID: ${pertanyaan.id}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId: pertanyaan.id, error: error.message }
+      });
     }
-  }, [aspekId, safeActivePertanyaanIndex, draftPertanyaan, pertanyaanList, quarterKey, updatePertanyaan, onRefreshData, toast, setEditModePertanyaan, aspekData]);
+  }, [aspekId, safeActivePertanyaanIndex, draftPertanyaan, pertanyaanList, quarterKey, updatePertanyaan, onRefreshData, toast, setEditModePertanyaan, aspekData, logUpdate, currentUser, year, formattedQuarter]);
 
   const handleCancelEditPertanyaan = useCallback(() => {
     const confirmed = window.confirm('Batalkan perubahan? Semua perubahan yang belum disimpan akan hilang.');
@@ -429,10 +489,20 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
       setEditModePertanyaan(false);
       setOriginalPertanyaan(null);
       setDraftPertanyaan(null);
+      await logCreate('KEPATUHAN_OJK', `Salin Pertanyaan ID: ${currentPertanyaan.id} pada Aspek ID: ${aspekId}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, sourcePertanyaanId: currentPertanyaan.id }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal menyalin pertanyaan', variant: 'destructive' });
+      await logCreate('KEPATUHAN_OJK', `Gagal Salin Pertanyaan ID: ${currentPertanyaan.id} pada Aspek ID: ${aspekId}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, sourcePertanyaanId: currentPertanyaan.id, error: error.message }
+      });
     }
-  }, [aspekId, safeActivePertanyaanIndex, currentPertanyaan, pertanyaanList, addPertanyaan, refreshKpmrData, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan]);
+  }, [aspekId, safeActivePertanyaanIndex, currentPertanyaan, pertanyaanList, addPertanyaan, refreshKpmrData, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, logCreate, currentUser, year, formattedQuarter]);
 
   const handleOpenPertanyaanDeleteDialog = useCallback(() => {
     if (!aspekId || safeActivePertanyaanIndex === -1 || !currentPertanyaan) return;
@@ -487,14 +557,24 @@ function PertanyaanPanel({ aspekId, pertanyaanList = [], activePertanyaanIndex, 
           setEditModePertanyaan(true);
           setDraftPertanyaan(createEmptyPertanyaan());
         }
+        await logDelete('KEPATUHAN_OJK', `Hapus Pertanyaan ID: ${pertanyaanId} pada Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal menghapus pertanyaan', variant: 'destructive' });
+        await logDelete('KEPATUHAN_OJK', `Gagal Hapus Pertanyaan ID: ${pertanyaanId} pada Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, pertanyaanId, error: error.message }
+        });
       }
     }
 
     setItemToDelete(null);
     setDeleteContext({ type: '', aspekId: null, pertanyaanId: null });
-  }, [itemToDelete, deleteContext, safeActivePertanyaanIndex, deletePertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData]);
+  }, [itemToDelete, deleteContext, safeActivePertanyaanIndex, deletePertanyaan, onRefreshData, toast, setActivePertanyaanIndex, setEditModePertanyaan, aspekData, logDelete, currentUser, year, formattedQuarter, aspekId]);
 
   const handleClearPertanyaanSelection = useCallback(() => {
     setActivePertanyaanIndex(-1);
@@ -789,6 +869,24 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
 
   const { addAspek, updateAspek, deleteAspek, saving, refreshKpmrData } = useKpmrKepatuhan();
 
+  // ===== AUDIT LOG =====
+  const year = useHeaderStore((s) => s.year);
+  const { logCreate, logUpdate, logDelete } = useAuditLog();
+  const { authUser } = useAuth();
+  const getCurrentUser = () => {
+    if (authUser && authUser.user_id) {
+      return { id: authUser.user_id, name: authUser.userID || authUser.username || 'Unknown', role: authUser.role || 'User' };
+    }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) {
+        return { id: storedUser.user_id, name: storedUser.userID || storedUser.username || 'Unknown', role: storedUser.role || 'User' };
+      }
+    } catch (e) { console.warn('Cannot parse user from localStorage:', e); }
+    return { id: null, name: 'System', role: 'System' };
+  };
+  const currentUser = getCurrentUser();
+
   const formattedQuarter = useMemo(() => formatQuarter(activeQuarter), [activeQuarter]);
 
   const normalizedRows = useMemo(() => normalizeKpmrRows(rows), [rows]);
@@ -944,16 +1042,26 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
         setEditModeAspek(false);
         setOriginalAspek(null);
         setDraftAspek({ nomor: '', judul: '', bobot: '' });
+        await logCreate('KEPATUHAN_OJK', `Tambah Aspek Baru: "${draftAspek.judul}" (Bobot: ${bobotNum}%) pada KPMR ID: ${targetKpmrId}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, kpmrId: targetKpmrId, draftAspek }
+        });
 
         return true;
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal menambah aspek', variant: 'destructive' });
+        await logCreate('KEPATUHAN_OJK', `Gagal Tambah Aspek Baru pada KPMR ID: ${targetKpmrId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, kpmrId: targetKpmrId, draftAspek, error: error.message }
+        });
         return false;
       } finally {
         setLoading(false);
       }
     },
-    [draftAspek, isAspekIncomplete, rows, addAspek, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModePertanyaan],
+    [draftAspek, isAspekIncomplete, rows, addAspek, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModePertanyaan, logCreate, currentUser, year, formattedQuarter],
   );
 
   // ========== HANDLE ADD NEW ASPEK - DENGAN DUKUNGAN CREATE KPMR ==========
@@ -1036,12 +1144,22 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
       setEditModeAspek(false);
       setOriginalAspek(null);
       setDraftAspek({ nomor: '', judul: '', bobot: '' });
+      await logUpdate('KEPATUHAN_OJK', `Update Aspek ID: ${safeActiveAspek.id} - "${draftAspek.judul}" (Bobot: ${bobotNum}%)`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId: safeActiveAspek.id, draftAspek }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal mengupdate aspek', variant: 'destructive' });
+      await logUpdate('KEPATUHAN_OJK', `Gagal Update Aspek ID: ${safeActiveAspek.id}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId: safeActiveAspek.id, draftAspek, error: error.message }
+      });
     } finally {
       setLoading(false);
     }
-  }, [safeActiveAspekIndex, safeActiveAspek, draftAspek, isAspekIncomplete, rows, updateAspek, onRefreshData, toast, setRows, setEditModeAspek]);
+  }, [safeActiveAspekIndex, safeActiveAspek, draftAspek, isAspekIncomplete, rows, updateAspek, onRefreshData, toast, setRows, setEditModeAspek, logUpdate, currentUser, year, formattedQuarter]);
 
   const handleEditAspek = useCallback(() => {
     if (safeActiveAspekIndex === -1) return;
@@ -1107,12 +1225,22 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
       setEditModeAspek(false);
       setOriginalAspek(null);
       setDraftAspek({ nomor: '', judul: '', bobot: '' });
+      await logCreate('KEPATUHAN_OJK', `Salin Aspek ID: ${source.id} ke KPMR ID: ${kpmrId}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, kpmrId, sourceAspekId: source.id }
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Gagal menyalin aspek', variant: 'destructive' });
+      await logCreate('KEPATUHAN_OJK', `Gagal Salin Aspek ID: ${source.id} ke KPMR ID: ${kpmrId}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'kpmr', year, quarter: formattedQuarter, kpmrId, sourceAspekId: source.id, error: error.message }
+      });
     } finally {
       setLoading(false);
     }
-  }, [safeActiveAspekIndex, safeActiveAspek, kpmrId, rows, addAspek, refreshKpmrData, onRefreshData, toast, setActiveAspekIndex, setActivePertanyaanIndex]);
+  }, [safeActiveAspekIndex, safeActiveAspek, kpmrId, rows, addAspek, refreshKpmrData, onRefreshData, toast, setActiveAspekIndex, setActivePertanyaanIndex, logCreate, currentUser, year, formattedQuarter]);
 
   const handleOpenAspekDeleteDialog = useCallback(() => {
     if (safeActiveAspekIndex === -1) return;
@@ -1169,14 +1297,24 @@ function AspekPanel({ rows = [], setRows, activeQuarter, onRefreshData, kpmrId, 
         setEditModeAspek(nextIndex === -1);
         setOriginalAspek(null);
         setDraftAspek({ nomor: '', judul: '', bobot: '' });
+        await logDelete('KEPATUHAN_OJK', `Hapus Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: true,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId }
+        });
       } catch (error) {
         toast({ title: 'Error', description: error.message || 'Gagal menghapus aspek', variant: 'destructive' });
+        await logDelete('KEPATUHAN_OJK', `Gagal Hapus Aspek ID: ${aspekId}`, {
+          userId: currentUser.id,
+          isSuccess: false,
+          metadata: { type: 'kpmr', year, quarter: formattedQuarter, aspekId, error: error.message }
+        });
       }
     }
 
     setItemToDelete(null);
     setDeleteContext({ type: '', aspekId: null, pertanyaanId: null });
-  }, [itemToDelete, deleteContext, safeActiveAspekIndex, rows, deleteAspek, refreshKpmrData, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModeAspek]);
+  }, [itemToDelete, deleteContext, safeActiveAspekIndex, rows, deleteAspek, refreshKpmrData, onRefreshData, toast, setRows, setActiveAspekIndex, setActivePertanyaanIndex, setEditModeAspek, logDelete, currentUser, year, formattedQuarter]);
 
   const handleClearAspekSelection = useCallback(() => {
     setActiveAspekIndex(-1);

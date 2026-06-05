@@ -1,23 +1,5 @@
 // src/features/Dashboard/pages/RiskProfile/pages/Operasional/hooks/useOperasional.ts
-
 import { useCallback, useEffect, useState } from 'react';
-// import {
-//   Quarter,
-//   computeHasil,
-//   computeWeightedAuto,
-//   CreateOperasionalData,
-//   CreateOperasionalSectionData,
-//   Period,
-//   OperasionalIndikator,
-//   OperasionalSection,
-//   transformIndicatorToBackend,
-//   UpdateOperasionalData,
-//   UpdateOperasionalSectionData,
-//   transformSectionToBackend,
-//   transformIndicatorToFrontend,
-//   operasionalApiService,
-// } from '../services/operasional.service';
-
 import {
   Quarter,
   computeHasil,
@@ -27,12 +9,14 @@ import {
   Period,
   OperasionalIndikator,
   OperasionalSection,
+  operasionalApiService,
   transformIndicatorToBackend,
   transformIndicatorToFrontend,
   transformSectionToBackend,
   UpdateOperasionalData,
   UpdateOperasionalSectionData,
-  operasionalApiService,
+  SectionsWithIndicatorsResponse,
+  DeleteResponse,
 } from '../../services/operational/operasional.service';
 
 // EMPTY TEMPLATES
@@ -84,10 +68,10 @@ interface UseOperasionalOptions {
 }
 
 interface UseOperasionalReturn {
-  // STATE
+  // ========== STATE ==========
   sections: OperasionalSection[];
   indikators: OperasionalIndikator[];
-  sectionsWithIndicators: Array<OperasionalSection & { indicators: OperasionalIndikator[] }>;
+  sectionsWithIndicators: Array<OperasionalSection & { indicators: OperasionalIndikator[]; totalWeighted: number; indicatorCount: number }>;
   periods: Period[];
   viewYear: number;
   viewQuarter: Quarter;
@@ -96,44 +80,46 @@ interface UseOperasionalReturn {
   error: string | null;
   totalWeighted: number;
 
-  // ACTIONS
+  // ========== STATE SETTERS ==========
   setViewYear: (year: number) => void;
   setViewQuarter: (quarter: Quarter) => void;
   setQuery: (query: string) => void;
   clearError: () => void;
 
-  // DATA OPERATIONS
-  getSections: (isActive?: boolean) => Promise<void>;
-  getAllIndikators: () => Promise<void>;
+  // ========== DATA OPERATIONS ==========
+  getSections: (isActive?: boolean) => Promise<OperasionalSection[]>;
+  getAllIndikators: () => Promise<OperasionalIndikator[]>;
   getIndikatorsByPeriod: (year: number, quarter: Quarter) => Promise<OperasionalIndikator[]>;
-  getSectionsWithIndicatorsByPeriod: (year: number, quarter: Quarter) => Promise<Array<OperasionalSection & { indicators: OperasionalIndikator[] }>>;
-  getPeriods: () => Promise<void>;
+  getSectionsWithIndicatorsByPeriod: (year: number, quarter: Quarter) => Promise<Array<OperasionalSection & { indicators: OperasionalIndikator[]; totalWeighted: number; indicatorCount: number }>>;
+  getPeriods: () => Promise<Period[]>;
   searchIndikators: (query?: string, year?: number, quarter?: Quarter) => Promise<OperasionalIndikator[]>;
   getAllSections: (isActive?: boolean) => Promise<OperasionalSection[]>;
 
-  // CRUD OPERATIONS
+  // ========== CRUD OPERATIONS ==========
   createSection: (data: CreateOperasionalSectionData) => Promise<OperasionalSection>;
   getSectionById: (id: number) => Promise<OperasionalSection>;
   updateSection: (id: number, data: UpdateOperasionalSectionData) => Promise<OperasionalSection>;
-  deleteSection: (id: number) => Promise<void>;
+  deleteSection: (id: number) => Promise<DeleteResponse>;
   createIndikator: (data: CreateOperasionalData) => Promise<OperasionalIndikator>;
   getIndikatorById: (id: number) => Promise<OperasionalIndikator>;
   updateIndikator: (id: number, data: UpdateOperasionalData) => Promise<OperasionalIndikator>;
-  deleteIndikator: (id: number) => Promise<void>;
+  deleteIndikator: (id: number) => Promise<DeleteResponse>;
 
-  // HELPER OPERATIONS
+  // ========== HELPER OPERATIONS ==========
   getTotalWeightedByPeriod: (year: number, quarter: Quarter) => Promise<number>;
   calculateTotalWeighted: () => Promise<void>;
   duplicateIndikator: (sourceId: number, targetYear: number, targetQuarter: Quarter) => Promise<OperasionalIndikator>;
+  getIndikatorCount: (year: number, quarter: Quarter) => Promise<number>;
+  getPeriodsWithCounts: () => Promise<(Period & { indicatorCount: number })[]>;
 
-  // TRANSFORMATIONS
+  // ========== TRANSFORMATIONS ==========
   transformToBackend: typeof transformIndicatorToBackend;
   transformToFrontend: typeof transformIndicatorToFrontend;
   transformSectionToBackend: typeof transformSectionToBackend;
   computeHasil: typeof computeHasil;
   computeWeightedAuto: typeof computeWeightedAuto;
 
-  // TEMPLATES
+  // ========== TEMPLATES ==========
   emptyIndicator: typeof emptyIndicator;
   emptySection: typeof emptySection;
 }
@@ -141,21 +127,21 @@ interface UseOperasionalReturn {
 export const useOperasional = (options?: UseOperasionalOptions): UseOperasionalReturn => {
   const { initialYear = new Date().getFullYear(), initialQuarter = 'Q1' as Quarter, autoLoad = true } = options || {};
 
-  // STATE
+  // ========== STATE ==========
   const [viewYear, setViewYear] = useState<number>(initialYear);
   const [viewQuarter, setViewQuarter] = useState<Quarter>(initialQuarter);
   const [query, setQuery] = useState<string>('');
 
   const [sections, setSections] = useState<OperasionalSection[]>([]);
   const [indikators, setIndikators] = useState<OperasionalIndikator[]>([]);
-  const [sectionsWithIndicators, setSectionsWithIndicators] = useState<Array<OperasionalSection & { indicators: OperasionalIndikator[] }>>([]);
+  const [sectionsWithIndicators, setSectionsWithIndicators] = useState<Array<OperasionalSection & { indicators: OperasionalIndikator[]; totalWeighted: number; indicatorCount: number }>>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [totalWeighted, setTotalWeighted] = useState<number>(0);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // EFFECTS
+  // ========== EFFECTS ==========
   useEffect(() => {
     if (autoLoad) {
       loadInitialData();
@@ -168,239 +154,279 @@ export const useOperasional = (options?: UseOperasionalOptions): UseOperasionalR
     }
   }, [viewYear, viewQuarter]);
 
-  // UTILITIES
+  // ========== UTILITIES ==========
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   const handleError = useCallback((err: any, operation: string) => {
-    console.error(`Error during ${operation}:`, err);
-    const errorMessage = err.message || `Gagal melakukan ${operation}`;
+    console.error(`❌ Error during ${operation}:`, err);
+
+    let errorMessage = 'Terjadi kesalahan';
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    } else if (typeof err === 'string') {
+      errorMessage = err;
+    }
+
     setError(errorMessage);
     throw err;
   }, []);
 
-  // DATA LOADING
-  const loadInitialData = useCallback(async () => {
+  const withLoading = useCallback(async <T>(fn: () => Promise<T>): Promise<T> => {
     try {
       setLoading(true);
-      await Promise.all([getSections(), getPeriods(), loadDataByPeriod()]);
-    } catch (err) {
-      handleError(err, 'memuat data awal');
+      return await fn();
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // ========== DATA LOADING ==========
+  const loadInitialData = useCallback(async () => {
+    try {
+      await withLoading(async () => {
+        await Promise.all([getSections(), getPeriods(), getSectionsWithIndicatorsByPeriod(viewYear, viewQuarter)]);
+      });
+    } catch (err) {
+      handleError(err, 'memuat data awal');
     }
   }, [viewYear, viewQuarter]);
 
   const loadDataByPeriod = useCallback(async () => {
     try {
-      setLoading(true);
-      await getSectionsWithIndicatorsByPeriod(viewYear, viewQuarter);
-      await calculateTotalWeighted();
+      await withLoading(async () => {
+        await getSectionsWithIndicatorsByPeriod(viewYear, viewQuarter);
+        await calculateTotalWeighted();
+      });
     } catch (err) {
-      handleError(err, 'memuat data periode');
-    } finally {
-      setLoading(false);
+      handleError(err, `memuat data periode ${viewYear}-${viewQuarter}`);
     }
   }, [viewYear, viewQuarter]);
 
-  // SECTION OPERATIONS
-  const getSections = useCallback(
-    async (isActive?: boolean) => {
-      try {
-        setLoading(true);
-        const data = await operasionalApiService.getAllSections(isActive);
-        setSections(data);
-        return data;
-      } catch (err) {
-        throw handleError(err, 'mengambil sections');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  // ========== SECTION OPERATIONS ==========
+  const getSections = useCallback(async (isActive?: boolean): Promise<OperasionalSection[]> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.getAllSections(isActive);
+      setSections(data);
+      return data;
+    });
+  }, []);
 
-  const getAllSections = useCallback(
-    async (isActive?: boolean): Promise<OperasionalSection[]> => {
-      try {
-        setLoading(true);
-        const data = await operasionalApiService.getAllSections(isActive);
-        return data;
-      } catch (err) {
-        throw handleError(err, 'mengambil semua sections');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getAllSections = useCallback(async (isActive?: boolean): Promise<OperasionalSection[]> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.getAllSections(isActive);
+      return data;
+    });
+  }, []);
 
-  const getSectionById = useCallback(
-    async (id: number): Promise<OperasionalSection> => {
-      try {
-        setLoading(true);
-        const data = await operasionalApiService.getSectionById(id);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil section dengan ID ${id}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getSectionById = useCallback(async (id: number): Promise<OperasionalSection> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.getSectionById(id);
+      return data;
+    });
+  }, []);
 
-  const createSection = useCallback(
-    async (data: CreateOperasionalSectionData): Promise<OperasionalSection> => {
-      try {
-        setLoading(true);
-        const newSection = await operasionalApiService.createSection(data);
-        setSections((prev) => [...prev, newSection]);
-        return newSection;
-      } catch (err) {
-        throw handleError(err, 'membuat section');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const createSection = useCallback(async (data: CreateOperasionalSectionData): Promise<OperasionalSection> => {
+    return withLoading(async () => {
+      const newSection = await operasionalApiService.createSection(data);
+      setSections((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [...prev, newSection];
+      });
+      setSectionsWithIndicators((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [
+          ...prev,
+          {
+            ...newSection,
+            indicators: [],
+            totalWeighted: 0,
+            indicatorCount: 0,
+          },
+        ];
+      });
+      return newSection;
+    });
+  }, []);
 
-  const updateSection = useCallback(
-    async (id: number, data: UpdateOperasionalSectionData): Promise<OperasionalSection> => {
-      try {
-        setLoading(true);
-        const updatedSection = await operasionalApiService.updateSection(id, data);
-        setSections((prev) => prev.map((section) => (section.id === id ? updatedSection : section)));
-        return updatedSection;
-      } catch (err) {
-        throw handleError(err, `mengupdate section dengan ID ${id}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const updateSection = useCallback(async (id: number, data: UpdateOperasionalSectionData): Promise<OperasionalSection> => {
+    return withLoading(async () => {
+      const updatedSection = await operasionalApiService.updateSection(id, data);
+      setSections((prev) => prev.map((section) => (section.id === id ? { ...section, ...updatedSection } : section)));
+      setSectionsWithIndicators((prev) =>
+        prev.map((section) =>
+          section.id === id
+            ? { ...section, ...updatedSection }
+            : section
+        )
+      );
+      return updatedSection;
+    });
+  }, []);
 
-  const deleteSection = useCallback(
-    async (id: number): Promise<void> => {
-      try {
-        setLoading(true);
-        await operasionalApiService.deleteSection(id);
+  const deleteSection = useCallback(async (id: number): Promise<DeleteResponse> => {
+    return withLoading(async () => {
+      const result = await operasionalApiService.deleteSection(id);
+
+      if (result.success) {
         setSections((prev) => prev.filter((section) => section.id !== id));
         setSectionsWithIndicators((prev) => prev.filter((section) => section.id !== id));
-      } catch (err) {
-        throw handleError(err, `menghapus section dengan ID ${id}`);
-      } finally {
-        setLoading(false);
       }
-    },
-    [handleError]
-  );
 
-  // INDIKATOR OPERATIONS
-  const getAllIndikators = useCallback(async () => {
-    try {
-      setLoading(true);
+      return result;
+    });
+  }, []);
+
+  // ========== INDIKATOR OPERATIONS ==========
+  const getAllIndikators = useCallback(async (): Promise<OperasionalIndikator[]> => {
+    return withLoading(async () => {
       const data = await operasionalApiService.getAllIndikators();
       setIndikators(data);
       return data;
-    } catch (err) {
-      throw handleError(err, 'mengambil semua indikator');
-    } finally {
-      setLoading(false);
-    }
-  }, [handleError]);
+    });
+  }, []);
 
-  const getIndikatorsByPeriod = useCallback(
-    async (year: number, quarter: Quarter): Promise<OperasionalIndikator[]> => {
-      try {
-        setLoading(true);
-        const data = await operasionalApiService.getIndikatorsByPeriod(year, quarter);
-        setIndikators(data);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil indikator periode ${year}-${quarter}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getIndikatorsByPeriod = useCallback(async (year: number, quarter: Quarter): Promise<OperasionalIndikator[]> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.getIndikatorsByPeriod(year, quarter);
+      setIndikators(data);
+      return data;
+    });
+  }, []);
 
   const getSectionsWithIndicatorsByPeriod = useCallback(
-    async (year: number, quarter: Quarter): Promise<Array<OperasionalSection & { indicators: OperasionalIndikator[] }>> => {
-      try {
-        setLoading(true);
-        const response = await operasionalApiService.getSectionsWithIndicatorsByPeriod(year, quarter);
+    async (year: number, quarter: Quarter): Promise<any> => {
+      return withLoading(async () => {
+        const targetYear = Number(year);
+        const targetQuarter = String(quarter) as Quarter;
 
-        let data = [];
-        if (response && typeof response === 'object') {
-          if (Array.isArray(response.sections)) {
-            data = response.sections;
-          } else if (Array.isArray(response)) {
-            data = response;
-          } else if (response.data && Array.isArray(response.data.sections)) {
-            data = response.data.sections;
-          }
+        console.log(`📡 Hook: Calling getSectionsWithIndicatorsByPeriod for ${targetYear}-${targetQuarter}`);
+
+        const response = await operasionalApiService.getSectionsWithIndicatorsByPeriod(targetYear, targetQuarter);
+
+        console.log('📦 Raw response:', response);
+
+        // ADAPTASI STRUKTUR RESPONSE
+        let sectionsData = [];
+
+        // Jika response langsung array
+        if (Array.isArray(response)) {
+          sectionsData = response;
+        }
+        // Jika response punya properti sections
+        else if (response?.sections && Array.isArray(response.sections)) {
+          sectionsData = response.sections;
+        }
+        // Jika response punya properti data
+        else if (response?.data && Array.isArray(response.data)) {
+          sectionsData = response.data;
         }
 
-        setSectionsWithIndicators(data);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil sections dengan indikator periode ${year}-${quarter}`);
-      } finally {
-        setLoading(false);
-      }
+        console.log('📊 Extracted sectionsData:', sectionsData);
+
+        // Mapping data yang lengkap
+        sectionsData = sectionsData.map((section) => ({
+          ...section,
+          indicators: (section.indicators || []).map((ind) => ({
+            id: ind.id,
+            subNo: ind.subNo || '',
+            indikator: ind.indikator || '',
+            bobotIndikator: ind.bobotIndikator || 0,
+            sumberRisiko: ind.sumberRisiko || '',
+            dampak: ind.dampak || '',
+            // === PEMBILANG & PENYEBUT ===
+            pembilangLabel: ind.pembilangLabel || '',
+            pembilangValue: ind.pembilangValue !== null && ind.pembilangValue !== undefined ? ind.pembilangValue.toString() : '',
+            penyebutLabel: ind.penyebutLabel || '',
+            penyebutValue: ind.penyebutValue !== null && ind.penyebutValue !== undefined ? ind.penyebutValue.toString() : '',
+            // === RISK LEVELS ===
+            low: ind.low || '',
+            lowToModerate: ind.lowToModerate || '',
+            moderate: ind.moderate || '',
+            moderateToHigh: ind.moderateToHigh || '',
+            high: ind.high || '',
+            // === METODE & HASIL ===
+            mode: ind.mode || 'RASIO',
+            formula: ind.formula || '',
+            isPercent: Boolean(ind.isPercent),
+            hasil: ind.hasil !== null ? ind.hasil.toString() : '',
+            hasilText: ind.hasilText || '',
+            peringkat: ind.peringkat || 1,
+            weighted: ind.weighted || '',
+            keterangan: ind.keterangan || '',
+            // === INFORMASI SECTION ===
+            sectionId: ind.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year || targetYear,
+            quarter: section.quarter || targetQuarter,
+            isValidated: ind.isValidated || false,
+            // === FIELD KOMPATIBILITAS DENGAN DATATABLE ===
+            numeratorLabel: ind.pembilangLabel || '',
+            numeratorValue: ind.pembilangValue !== null && ind.pembilangValue !== undefined ? ind.pembilangValue.toString() : '',
+            denominatorLabel: ind.penyebutLabel || '',
+            denominatorValue: ind.penyebutValue !== null && ind.penyebutValue !== undefined ? ind.penyebutValue.toString() : '',
+          })),
+          totalWeighted: section.totalWeighted || 0,
+          indicatorCount: section.indicatorCount || 0,
+        }));
+
+        console.log('📊 Data sections setelah mapping:', sectionsData);
+
+        setSectionsWithIndicators(sectionsData);
+        return sectionsData;
+      });
     },
-    [handleError]
+    [withLoading],
   );
 
-  const searchIndikators = useCallback(
-    async (searchQuery?: string, year?: number, quarter?: Quarter): Promise<OperasionalIndikator[]> => {
-      try {
-        setLoading(true);
-        const data = await operasionalApiService.searchIndikators(searchQuery, year, quarter);
-        return data;
-      } catch (err) {
-        throw handleError(err, 'mencari indikator');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const searchIndikators = useCallback(async (searchQuery?: string, year?: number, quarter?: Quarter): Promise<OperasionalIndikator[]> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.searchIndikators(searchQuery, year, quarter);
+      return data;
+    });
+  }, []);
 
-  const getIndikatorById = useCallback(
-    async (id: number): Promise<OperasionalIndikator> => {
-      try {
-        setLoading(true);
-        const data = await operasionalApiService.getIndikatorById(id);
-        return data;
-      } catch (err) {
-        throw handleError(err, `mengambil indikator dengan ID ${id}`);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [handleError]
-  );
+  const getIndikatorById = useCallback(async (id: number): Promise<OperasionalIndikator> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.getIndikatorById(id);
+      return data;
+    });
+  }, []);
 
   const createIndikator = useCallback(async (data: CreateOperasionalData): Promise<OperasionalIndikator> => {
-    try {
-      setLoading(true);
+    return withLoading(async () => {
       const newIndikator = await operasionalApiService.createIndikator(data);
 
+      // Update indikators list
       setIndikators((prev) => [...prev, newIndikator]);
 
+      // Update sections with indicators
       setSectionsWithIndicators((prev) => {
         const sectionIndex = prev.findIndex((s) => s.id === data.sectionId);
         if (sectionIndex !== -1) {
           const updated = [...prev];
+          const section = updated[sectionIndex];
+          const mappedIndikator = {
+            ...newIndikator,
+            sectionId: newIndikator.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year,
+            quarter: section.quarter,
+            numeratorLabel: newIndikator.pembilangLabel || '',
+            numeratorValue: newIndikator.pembilangValue !== null && newIndikator.pembilangValue !== undefined ? newIndikator.pembilangValue.toString() : '',
+            denominatorLabel: newIndikator.penyebutLabel || '',
+            denominatorValue: newIndikator.penyebutValue !== null && newIndikator.penyebutValue !== undefined ? newIndikator.penyebutValue.toString() : '',
+          };
           updated[sectionIndex] = {
-            ...updated[sectionIndex],
-            indicators: [...updated[sectionIndex].indicators, newIndikator],
+            ...section,
+            indicators: [...section.indicators, mappedIndikator],
+            indicatorCount: section.indicatorCount + 1,
+            totalWeighted: section.totalWeighted + (newIndikator.weighted || 0),
           };
           return updated;
         }
@@ -408,110 +434,150 @@ export const useOperasional = (options?: UseOperasionalOptions): UseOperasionalR
       });
 
       return newIndikator;
-    } catch (err) {
-      throw handleError(err, 'membuat indikator');
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
-  const updateIndikator = useCallback(async (id: number, data: UpdateOperasionalData): Promise<OperasionalIndikator> => {
-    try {
-      setLoading(true);
-      const updatedIndikator = await operasionalApiService.updateIndikator(id, data);
+  const updateIndikator = useCallback(
+    async (id: number, data: UpdateOperasionalData): Promise<OperasionalIndikator> => {
+      return withLoading(async () => {
+        if (data.mode === 'RASIO' && data.penyebutValue === 0) {
+          throw new Error('Untuk mode RASIO, nilai penyebut harus lebih besar dari 0');
+        }
 
-      setIndikators((prev) => prev.map((indikator) => (indikator.id === id ? updatedIndikator : indikator)));
+        const updatedIndikator = await operasionalApiService.updateIndikator(id, data);
 
-      setSectionsWithIndicators((prev) =>
-        prev.map((section) => {
-          const updatedIndicators = section.indicators.map((indikator) => (indikator.id === id ? updatedIndikator : indikator));
-          return { ...section, indicators: updatedIndicators };
-        })
-      );
+        // Find old indikator untuk adjust totalWeighted
+        const oldIndikator = indikators.find((i) => i.id === id);
 
-      return updatedIndikator;
-    } catch (err) {
-      throw handleError(err, `mengupdate indikator dengan ID ${id}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        // Update indikators list
+        setIndikators((prev) => prev.map((indikator) => (indikator.id === id ? updatedIndikator : indikator)));
 
-  const deleteIndikator = useCallback(async (id: number): Promise<void> => {
-    try {
-      setLoading(true);
-      await operasionalApiService.deleteIndikator(id);
+        // Update sections with indicators
+        setSectionsWithIndicators((prev) =>
+          prev.map((section) => {
+            const indicatorIndex = section.indicators.findIndex((i) => i.id === id);
+            if (indicatorIndex !== -1) {
+              const newIndicators = [...section.indicators];
+              const mappedIndikator = {
+                ...newIndicators[indicatorIndex],
+                ...updatedIndikator,
+                sectionId: updatedIndikator.sectionId || section.id,
+                no: section.no,
+                sectionLabel: section.parameter,
+                bobotSection: section.bobotSection,
+                year: section.year,
+                quarter: section.quarter,
+                numeratorLabel: updatedIndikator.pembilangLabel || '',
+                numeratorValue: updatedIndikator.pembilangValue !== null && updatedIndikator.pembilangValue !== undefined ? updatedIndikator.pembilangValue.toString() : '',
+                denominatorLabel: updatedIndikator.penyebutLabel || '',
+                denominatorValue: updatedIndikator.penyebutValue !== null && updatedIndikator.penyebutValue !== undefined ? updatedIndikator.penyebutValue.toString() : '',
+              };
+              newIndicators[indicatorIndex] = mappedIndikator;
 
-      setIndikators((prev) => prev.filter((indikator) => indikator.id !== id));
+              // Recalculate totalWeighted
+              const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);
 
-      setSectionsWithIndicators((prev) =>
-        prev.map((section) => ({
-          ...section,
-          indicators: section.indicators.filter((indikator) => indikator.id !== id),
-        }))
-      );
-    } catch (err) {
-      throw handleError(err, `menghapus indikator dengan ID ${id}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+              return {
+                ...section,
+                indicators: newIndicators,
+                totalWeighted: newTotalWeighted,
+              };
+            }
+            return section;
+          }),
+        );
 
-  // HELPER OPERATIONS
-  const getTotalWeightedByPeriod = useCallback(
-    async (year: number, quarter: Quarter): Promise<number> => {
-      try {
-        setLoading(true);
-        const total = await operasionalApiService.getTotalWeightedByPeriod(year, quarter);
-        return total;
-      } catch (err) {
-        throw handleError(err, `menghitung total weighted periode ${year}-${quarter}`);
-      } finally {
-        setLoading(false);
-      }
+        return updatedIndikator;
+      });
     },
-    [handleError]
+    [indikators],
   );
+
+  const deleteIndikator = useCallback(
+    async (id: number): Promise<DeleteResponse> => {
+      return withLoading(async () => {
+        const result = await operasionalApiService.deleteIndikator(id);
+
+        if (result.success) {
+          // Find indikator untuk adjust totalWeighted
+          const deletedIndikator = indikators.find((i) => i.id === id);
+
+          // Update indikators list
+          setIndikators((prev) => prev.filter((indikator) => indikator.id !== id));
+
+          // Update sections with indicators
+          setSectionsWithIndicators((prev) =>
+            prev.map((section) => {
+              const newIndicators = section.indicators.filter((i) => i.id !== id);
+              const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);
+
+              return {
+                ...section,
+                indicators: newIndicators,
+                indicatorCount: newIndicators.length,
+                totalWeighted: newTotalWeighted,
+              };
+            }),
+          );
+        }
+
+        return result;
+      });
+    },
+    [indikators],
+  );
+
+  // ========== HELPER OPERATIONS ==========
+  const getTotalWeightedByPeriod = useCallback(async (year: number, quarter: Quarter): Promise<number> => {
+    return withLoading(async () => {
+      const total = await operasionalApiService.getTotalWeightedByPeriod(year, quarter);
+      return total;
+    });
+  }, []);
 
   const calculateTotalWeighted = useCallback(async () => {
     try {
-      const total = await getTotalWeightedByPeriod(viewYear, viewQuarter);
+      const total = await operasionalApiService.getTotalWeightedByPeriod(viewYear, viewQuarter);
       setTotalWeighted(total);
     } catch (err) {
       setTotalWeighted(0);
       handleError(err, `menghitung total weighted periode ${viewYear}-${viewQuarter}`);
     }
-  }, [viewYear, viewQuarter, getTotalWeightedByPeriod, handleError]);
+  }, [viewYear, viewQuarter]);
 
-  const getPeriods = useCallback(async () => {
-    try {
-      setLoading(true);
+  const getPeriods = useCallback(async (): Promise<Period[]> => {
+    return withLoading(async () => {
       const data = await operasionalApiService.getAvailablePeriods();
       setPeriods(data);
       return data;
-    } catch (err) {
-      throw handleError(err, 'mengambil periode tersedia');
-    } finally {
-      setLoading(false);
-    }
-  }, [handleError]);
+    });
+  }, []);
+
+  const getPeriodsWithCounts = useCallback(async (): Promise<(Period & { indicatorCount: number })[]> => {
+    return withLoading(async () => {
+      const data = await operasionalApiService.getPeriodsWithCounts();
+      return data;
+    });
+  }, []);
+
+  const getIndikatorCount = useCallback(async (year: number, quarter: Quarter): Promise<number> => {
+    return withLoading(async () => {
+      const count = await operasionalApiService.getIndikatorCount(year, quarter);
+      return count;
+    });
+  }, []);
 
   const duplicateIndikator = useCallback(async (sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<OperasionalIndikator> => {
-    try {
-      setLoading(true);
+    return withLoading(async () => {
       const newIndikator = await operasionalApiService.duplicateIndikator(sourceId, targetYear, targetQuarter);
 
       setIndikators((prev) => [...prev, newIndikator]);
 
       return newIndikator;
-    } catch (err) {
-      throw handleError(err, 'menduplikasi indikator');
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
-  // RETURN
+  // ========== RETURN ==========
   return {
     // State
     sections,
@@ -525,7 +591,7 @@ export const useOperasional = (options?: UseOperasionalOptions): UseOperasionalR
     error,
     totalWeighted,
 
-    // Actions
+    // State setters
     setViewYear,
     setViewQuarter,
     setQuery,
@@ -554,6 +620,8 @@ export const useOperasional = (options?: UseOperasionalOptions): UseOperasionalR
     getTotalWeightedByPeriod,
     calculateTotalWeighted,
     duplicateIndikator,
+    getIndikatorCount,
+    getPeriodsWithCounts,
 
     // Transformations
     transformToBackend: transformIndicatorToBackend,

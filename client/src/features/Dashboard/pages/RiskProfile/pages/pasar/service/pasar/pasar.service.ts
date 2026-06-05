@@ -1,5 +1,6 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Pasar/services/pasar.service.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Pasar/services/new-pasar.service.ts
 import axios, { AxiosResponse } from 'axios';
+import { SectionsWithIndicatorsResponse } from '../../pasar/service/pasar/pasar.service';
 
 // ENUMS
 export enum CalculationMode {
@@ -167,29 +168,6 @@ export interface DeleteResponse {
   message: string;
 }
 
-export interface SectionsWithIndicatorsResponse {
-  success: boolean;
-  year: number;
-  quarter: Quarter;
-  sections: Array<{
-    id: number;
-    no: string;
-    parameter: string;
-    bobotSection: number;
-    description: string | null;
-    year: number;
-    quarter: Quarter;
-    isActive: boolean;
-    indicators: PasarIndikator[];
-    totalWeighted: number;
-    indicatorCount: number;
-  }>;
-  sectionsWithIndicators: Array<any>;
-  overallTotalWeighted: number;
-  sectionCount: number;
-  totalIndicators: number;
-}
-
 // UTILITY FUNCTIONS
 export const fmtNumber = (v: any): string => {
   if (v === '' || v == null) return '';
@@ -203,14 +181,16 @@ export const formatHasilNumber = (value: any, maxDecimals = 4): string => {
   const n = Number(value);
   if (!isFinite(n) || isNaN(n)) return '';
 
+  // batasi maxDecimals, lalu buang .0000 di belakang
   const fixed = n.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, '');
+  return fixed.replace(/\.?0+$/, ''); // "1.2300" -> "1.23", "0.0000" -> "0"
 };
 
 export const parseNum = (v: any): number => {
   if (v == null || v === '') return 0;
   if (typeof v === 'number') return v;
 
+  // buang koma, spasi, dll biar "1,000" -> "1000"
   const cleaned = String(v).replace(/,/g, '').replace(/\s/g, '');
   const n = Number(cleaned);
   return isNaN(n) ? 0 : n;
@@ -223,9 +203,10 @@ export const computeHasil = (ind: any): number | null => {
   const pemb = parseNum(ind.pembilangValue);
   const peny = parseNum(ind.penyebutValue);
 
+  // 🔹 Validasi untuk mode RASIO
   if (mode === 'RASIO' && peny === 0) {
     console.warn('Penyebut value adalah 0 untuk mode RASIO');
-    return null;
+    return null; // Kembalikan null, jangan throw error
   }
 
   if (ind.formula && ind.formula.trim() !== '') {
@@ -246,11 +227,13 @@ export const computeHasil = (ind: any): number | null => {
     }
   }
 
+  // 🔹 NILAI_TUNGGAL → langsung pakai nilai penyebut
   if (mode === 'NILAI_TUNGGAL') {
     if (ind.penyebutValue === '' || ind.penyebutValue == null) return null;
-    return peny;
+    return peny; // boleh 0, 10, 100, dll
   }
 
+  // 🔹 RASIO (default) → pemb / peny
   if (peny === 0) return null;
   const result = pemb / peny;
   if (!isFinite(result) || isNaN(result)) return null;
@@ -269,11 +252,14 @@ export const computeWeightedAuto = (ind: any, sectionBobot: number): number => {
 export const transformIndicatorToBackend = (indicatorData: any, year: number, quarter: Quarter, sectionId: number, sectionData: any): CreatePasarData => {
   const hasilNum = computeHasil(indicatorData);
 
+  // Validasi khusus untuk mode RASIO
   let penyebutValue = indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined;
 
+  // Untuk mode RASIO, jika penyebut 0 atau undefined, set ke null agar backend menolak
   if (indicatorData.mode === CalculationMode.RASIO) {
     if (penyebutValue === 0 || penyebutValue === undefined || isNaN(penyebutValue)) {
       console.warn('Penyebut value untuk mode RASIO tidak valid:', penyebutValue);
+      // Biarkan undefined, backend akan memberikan error validasi
     }
   }
 
@@ -300,7 +286,7 @@ export const transformIndicatorToBackend = (indicatorData: any, year: number, qu
     pembilangLabel: indicatorData.pembilangLabel?.trim() || undefined,
     pembilangValue: indicatorData.pembilangValue !== undefined && indicatorData.pembilangValue !== '' ? Number(indicatorData.pembilangValue) : undefined,
     penyebutLabel: indicatorData.penyebutLabel?.trim() || undefined,
-    penyebutValue: penyebutValue,
+    penyebutValue: penyebutValue, // Gunakan hasil validasi
     hasil: hasilNum !== null ? hasilNum : undefined,
     hasilText: indicatorData.mode === CalculationMode.TEKS ? indicatorData.hasilText || indicatorData.keterangan || '' : undefined,
     peringkat: Number(indicatorData.peringkat) || 1,
@@ -401,7 +387,7 @@ class PasarApiService {
     return this.request<PasarIndikator[]>('get', '/pasar/indikators/period', null, { year, quarter });
   }
 
-  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<SectionsWithIndicatorsResponse> {
+  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<any> {
     try {
       console.log(`📡 Calling API: getSectionsWithIndicatorsByPeriod for ${year}-${quarter}`);
 
@@ -451,15 +437,6 @@ class PasarApiService {
 
   async getAvailablePeriods(): Promise<Period[]> {
     return this.request<Period[]>('get', '/pasar/periods');
-  }
-
-  async getPeriodsWithCounts(): Promise<(Period & { indicatorCount: number })[]> {
-    return this.request<(Period & { indicatorCount: number })[]>('get', '/pasar/periods/with-counts');
-  }
-
-  async getIndikatorCount(year: number, quarter: Quarter): Promise<number> {
-    const response = await this.request<{ count: number }>('get', '/pasar/indikators/count', null, { year, quarter });
-    return response.count;
   }
 
   async duplicateIndikator(sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<PasarIndikator> {

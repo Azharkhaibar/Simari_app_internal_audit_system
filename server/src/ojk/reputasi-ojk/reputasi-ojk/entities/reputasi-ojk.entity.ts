@@ -7,11 +7,11 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
-import { ReputasiParameter } from './reputasi-paramater.entity';
+import { ReputasiParameter } from './reputasi-parameter.entity';
 
 @Entity('reputasi_ojk')
 @Index(['year', 'quarter'], { unique: true })
-export class ReputasiOjk {
+export class Reputasi {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,7 +24,7 @@ export class ReputasiOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => ReputasiParameter, (parameter) => parameter.reputasiOjk, {
+  @OneToMany(() => ReputasiParameter, (parameter) => parameter.reputasi, {
     cascade: true,
     eager: false,
   })

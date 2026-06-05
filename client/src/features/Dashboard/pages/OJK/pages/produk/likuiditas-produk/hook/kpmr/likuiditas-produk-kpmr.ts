@@ -1,3 +1,4 @@
+// likuiditas-kpmr.hook.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useToast } from '../../components/use-toast';
 import kpmrLikuiditasApiService, {
@@ -46,7 +47,7 @@ interface UseKpmrLikuiditasReturn {
   hasError: boolean;
 }
 
-export function useKpmrLikuiditas(): UseKpmrLikuiditasReturn {
+export function useKpmrLikuiditasProduk(): UseKpmrLikuiditasReturn {
   const { toast } = useToast();
 
   const [kpmr, setKpmr] = useState<FrontendKpmrResponse | null>(null);
@@ -223,11 +224,11 @@ export function useKpmrLikuiditas(): UseKpmrLikuiditasReturn {
 
     if (loadingRef.current) {
       console.log('⏳ [Hook] Refresh already in progress...');
-      return rows;
+      return [];
     }
 
     loadingRef.current = true;
-    safeSet(setLoading, true);
+    safeSet(setSaving, true); // use saving, NOT loading — avoids parent page-level loading gate
 
     try {
       const cleanIdNum = cleanId(kpmr.id);
@@ -248,12 +249,12 @@ export function useKpmrLikuiditas(): UseKpmrLikuiditasReturn {
           variant: 'destructive',
         });
       }
-      return rows;
+      return [];
     } finally {
       loadingRef.current = false;
-      safeSet(setLoading, false);
+      safeSet(setSaving, false);
     }
-  }, [kpmr?.id, cleanId, toast, rows]);
+  }, [kpmr?.id, cleanId, toast]);
 
   // ========== ASPEK OPERATIONS ==========
   const addAspek = useCallback(
@@ -560,4 +561,4 @@ export function useKpmrLikuiditas(): UseKpmrLikuiditasReturn {
   };
 }
 
-export default useKpmrLikuiditas;
+export default useKpmrLikuiditasProduk;

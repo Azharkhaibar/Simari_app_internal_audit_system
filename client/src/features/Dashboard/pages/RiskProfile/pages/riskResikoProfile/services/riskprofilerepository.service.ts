@@ -125,6 +125,14 @@ class RiskProfileRepositoryService {
     },
   });
 
+  private ojkApi = axios.create({
+    baseURL: `${API_BASE_URL}/risk-profile-repository-ojk`,
+    timeout: 30000,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
   /**
    * Get all repository data with filtering and pagination
    */
@@ -250,6 +258,59 @@ class RiskProfileRepositoryService {
    */
   async downloadCsvExport(filters: RepositoryFilters): Promise<void> {
     return this.exportRepositoryData(filters, 'csv');
+  }
+
+  /**
+   * Get all OJK repository data with filtering and pagination
+   */
+  async getOjkRepositoryData(filters: any, pagination: any): Promise<any> {
+    try {
+      const params = this.buildQueryParams(filters, pagination);
+      const response = await this.ojkApi.get('', { params });
+      return response.data;
+    } catch (error: any) {
+      return this.handleError(error, 'Failed to fetch OJK repository data');
+    }
+  }
+
+  /**
+   * Get list of available OJK modules
+   */
+  async getOjkAvailableModules(): Promise<any[]> {
+    try {
+      const response = await this.ojkApi.get('modules');
+      return response.data.modules;
+    } catch (error: any) {
+      console.error('Failed to fetch OJK available modules:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get available periods in OJK repository
+   */
+  async getOjkAvailablePeriods(): Promise<any[]> {
+    try {
+      const response = await this.ojkApi.get('periods');
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to fetch OJK available periods:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get OJK repository statistics for a period
+   */
+  async getOjkRepositoryStatistics(year: number, quarter: any): Promise<any> {
+    try {
+      const response = await this.ojkApi.get('statistics', {
+        params: { year, quarter },
+      });
+      return response.data;
+    } catch (error: any) {
+      return this.handleError(error, 'Failed to fetch OJK repository statistics');
+    }
   }
 
   // Private helper methods

@@ -229,7 +229,22 @@ export const useLikuiditas = (options?: UseLikuiditasOptions): UseLikuiditasRetu
   const createSection = useCallback(async (data: CreateLikuiditasSectionData): Promise<LikuiditasSection> => {
     return withLoading(async () => {
       const newSection = await likuiditasApiService.createSection(data);
-      setSections((prev) => [...prev, newSection]);
+      setSections((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [...prev, newSection];
+      });
+      setSectionsWithIndicators((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [
+          ...prev,
+          {
+            ...newSection,
+            indicators: [],
+            totalWeighted: 0,
+            indicatorCount: 0,
+          },
+        ];
+      });
       return newSection;
     });
   }, []);
@@ -237,7 +252,14 @@ export const useLikuiditas = (options?: UseLikuiditasOptions): UseLikuiditasRetu
   const updateSection = useCallback(async (id: number, data: UpdateLikuiditasSectionData): Promise<LikuiditasSection> => {
     return withLoading(async () => {
       const updatedSection = await likuiditasApiService.updateSection(id, data);
-      setSections((prev) => prev.map((section) => (section.id === id ? updatedSection : section)));
+      setSections((prev) => prev.map((section) => (section.id === id ? { ...section, ...updatedSection } : section)));
+      setSectionsWithIndicators((prev) =>
+        prev.map((section) =>
+          section.id === id
+            ? { ...section, ...updatedSection }
+            : section
+        )
+      );
       return updatedSection;
     });
   }, []);
@@ -372,9 +394,24 @@ export const useLikuiditas = (options?: UseLikuiditasOptions): UseLikuiditasRetu
         if (sectionIndex !== -1) {
           const updated = [...prev];
           const section = updated[sectionIndex];
+
+          const mappedIndikator = {
+            ...newIndikator,
+            sectionId: newIndikator.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year,
+            quarter: section.quarter,
+            numeratorLabel: newIndikator.pembilangLabel || '',
+            numeratorValue: newIndikator.pembilangValue !== null && newIndikator.pembilangValue !== undefined ? newIndikator.pembilangValue.toString() : '',
+            denominatorLabel: newIndikator.penyebutLabel || '',
+            denominatorValue: newIndikator.penyebutValue !== null && newIndikator.penyebutValue !== undefined ? newIndikator.penyebutValue.toString() : '',
+          };
+
           updated[sectionIndex] = {
             ...section,
-            indicators: [...section.indicators, newIndikator],
+            indicators: [...section.indicators, mappedIndikator],
             indicatorCount: section.indicatorCount + 1,
             totalWeighted: section.totalWeighted + (newIndikator.weighted || 0),
           };
@@ -405,7 +442,23 @@ export const useLikuiditas = (options?: UseLikuiditasOptions): UseLikuiditasRetu
             const indicatorIndex = section.indicators.findIndex((i) => i.id === id);
             if (indicatorIndex !== -1) {
               const newIndicators = [...section.indicators];
-              newIndicators[indicatorIndex] = updatedIndikator;
+              
+              const mappedIndikator = {
+                ...newIndicators[indicatorIndex],
+                ...updatedIndikator,
+                sectionId: updatedIndikator.sectionId || section.id,
+                no: section.no,
+                sectionLabel: section.parameter,
+                bobotSection: section.bobotSection,
+                year: section.year,
+                quarter: section.quarter,
+                numeratorLabel: updatedIndikator.pembilangLabel || '',
+                numeratorValue: updatedIndikator.pembilangValue !== null && updatedIndikator.pembilangValue !== undefined ? updatedIndikator.pembilangValue.toString() : '',
+                denominatorLabel: updatedIndikator.penyebutLabel || '',
+                denominatorValue: updatedIndikator.penyebutValue !== null && updatedIndikator.penyebutValue !== undefined ? updatedIndikator.penyebutValue.toString() : '',
+              };
+              
+              newIndicators[indicatorIndex] = mappedIndikator;
 
               const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);
 

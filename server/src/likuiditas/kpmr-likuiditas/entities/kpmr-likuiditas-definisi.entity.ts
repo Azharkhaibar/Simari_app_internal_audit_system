@@ -10,8 +10,8 @@ import {
   OneToMany,
 } from 'typeorm';
 import { KPMRLikuiditasQuestion } from './kpmr-likuiditas-pertanyaan.entity';
-// import { KPMRLikuiditasScore } from './kpmr-likuiditas-skor.entity';
 import { KPMRLikuiditasScore } from './kpmr-likuiditas-skor.entity';
+
 @Entity('kpmr_likuiditas_definisi_holding')
 @Index(
   'IDX_KPMR_LIKUIDITAS_DEF_YEAR_ASPECT',

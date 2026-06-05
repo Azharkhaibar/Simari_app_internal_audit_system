@@ -5,7 +5,6 @@ import { AxiosError } from 'axios';
 import { NotificationService } from '../../Dashboard/pages/notification/services/notification.services';
 import { ProfileService } from '../../Dashboard/pages/profile/services/profile.services';
 import { useNotificationStore } from '../../Dashboard/pages/notification/stores/notification.stores';
-import { userInfo } from 'os';
 
 interface AuthUser {
   userID: string; // username login
@@ -42,11 +41,8 @@ export const useAuth = () => {
     };
   }, []);
 
-  const createLoginNotification = useCallback(async () => {
-    if (!user || !user.user_id || !user.username) return;
-
-    // Reset ref agar login notification bisa dikirim lagi
-    loginNotificationSentRef.current = false;
+  const createLoginNotification = useCallback(async (userId: number, username: string) => {
+    if (!userId || !username) return;
 
     if (loginNotificationSentRef.current) {
       console.log('⚠️ Login notification already sent');
@@ -59,17 +55,17 @@ export const useAuth = () => {
       console.log('🔔 Creating login notifications...');
 
       // 1. Notification untuk user sendiri
-      await NotificationService.createLoginNotification(user.user_id, user.username);
+      await NotificationService.createLoginNotification(userId, username);
 
       // 2. Broadcast untuk admin/other users
-      await NotificationService.createUserStatusBroadcast(user.user_id, user.username, 'login');
+      await NotificationService.createUserStatusBroadcast(userId, username, 'login');
 
       console.log('✅ Login notifications created successfully');
     } catch (err) {
       console.error('❌ Login notification failed:', err);
       loginNotificationSentRef.current = false; // Reset jika gagal
     }
-  }, [user]);
+  }, []);
 
   const createLogoutNotification = useCallback(async (userId: number, username: string, accessToken?: string): Promise<boolean> => {
     if (!userId || !username) {
@@ -197,12 +193,15 @@ export const useAuth = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        setUser(res.data);
+        // Reset login notification flag agar bisa dikirim lagi
+        loginNotificationSentRef.current = false;
 
         if (res.data.user_id) {
           await createLoginNotification(res.data.user_id, res.data.userID);
           localStorage.setItem(`last_login_${res.data.user_id}`, new Date().toDateString());
         }
+
+        setUser(res.data);
 
         return token;
       } finally {
@@ -287,23 +286,37 @@ export const useAuth = () => {
 
   const logout = useCallback(async () => {
     const userData = userRef.current;
+    const token = localStorage.getItem('access_token');
+
+    // Hapus token dan reset user secara instan agar route guard langsung mengarahkan ke login
+    localStorage.removeItem('access_token');
+    if (userData?.user_id) {
+      localStorage.removeItem(`last_login_${userData.user_id}`);
+    }
+    setUser(null);
 
     if (!userData?.user_id) {
       localStorage.clear();
-      setUser(null);
       return;
     }
 
     const { user_id, userID } = userData;
-    const token = localStorage.getItem('access_token');
 
-    localStorage.removeItem('access_token');
-    localStorage.removeItem(`last_login_${user_id}`);
-    setUser(null);
-
-    setTimeout(() => {
-      createLogoutNotification(user_id, userID, token || undefined);
-    }, 0);
+    // MENGIRIM NOTIFIKASI LOGOUT DI BACKGROUND
+    if (token) {
+      try {
+        // Coba kirim via endpoint logout backend agar diproses penuh oleh server
+        await RIMS_API.post('/auth/logout', {}, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('✅ Backend logout successful');
+      } catch (err) {
+        console.warn('⚠️ Backend logout endpoint failed, falling back to client-side notification:', err);
+        await createLogoutNotification(user_id, userID, token);
+      }
+    } else {
+      await createLogoutNotification(user_id, userID, undefined);
+    }
   }, [createLogoutNotification]);
 
   const quickLogout = useCallback(() => {

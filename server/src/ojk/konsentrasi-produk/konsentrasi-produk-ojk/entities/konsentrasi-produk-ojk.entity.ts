@@ -27,7 +27,7 @@ export class KonsentrasiProdukOjk {
   // Relasi ke parameter
   @OneToMany(
     () => KonsentrasiParameter,
-    (parameter) => parameter.konsentrasiProdukOjk,
+    (parameter) => parameter.konsentrasi,
     {
       cascade: true,
       eager: false,

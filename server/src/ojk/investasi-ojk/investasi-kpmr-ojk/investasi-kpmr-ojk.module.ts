@@ -1,9 +1,25 @@
+// src/ojk/investasi/investasi-kpmr/investasi-kpmr.module.ts
+
 import { Module } from '@nestjs/common';
-import { InvestasiKpmrOjkService } from './investasi-kpmr-ojk.service';
-import { InvestasiKpmrOjkController } from './investasi-kpmr-ojk.controller';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { KpmrAspekInvestasi } from './entities/investasi-kpmr-aspek.entity'; // IMPORT DARI FILE TERPISAH
+import { KpmrPertanyaanInvestasi } from './entities/investasi-kpmr-pertanyaan.entity';
+import { KpmrInvestasiOjk } from './entities/investasi-kpmr-ojk.entity';
+import { KpmrInvestasiController } from './investasi-kpmr-ojk.controller';
+import { KpmrInvestasiService } from './investasi-kpmr-ojk.service';
 
 @Module({
-  controllers: [InvestasiKpmrOjkController],
-  providers: [InvestasiKpmrOjkService],
+  imports: [
+    TypeOrmModule.forFeature([
+      KpmrInvestasiOjk,
+      KpmrAspekInvestasi,
+      KpmrPertanyaanInvestasi,
+      // ✅ HAPUS: PasarProdukKpmrModule - ini menyebabkan circular dependency
+    ]),
+  ],
+  controllers: [KpmrInvestasiController],
+  providers: [KpmrInvestasiService],
+  exports: [KpmrInvestasiService],
 })
-export class InvestasiKpmrOjkModule {}
+export class InvestasiKpmrModule {}

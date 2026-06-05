@@ -42,7 +42,7 @@ export type TindakLanjut = {
 };
 
 export interface RasData {
-  id: string;
+  id: number;
   year: number;
   groupId?: string;
   riskCategory: string;

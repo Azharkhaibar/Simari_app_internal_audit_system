@@ -1,7 +1,7 @@
 // registform.jsx
 import React, { useState } from 'react';
 import InputField from '../components/inputField';
-import fileIMG from '../../../assets/LogoRIMS.png';
+import fileIMG from '../../../assets/logo-pnm-2-removebg-preview.png';
 import bgImage from '../../../assets/Gedung-PNM-Banner.jpg';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.hook';
@@ -87,8 +87,12 @@ export default function RegisterPage() {
       <div className="flex-1 flex items-center justify-center p-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className={formCardClass}>
           <div className="text-center mb-8">
-            <img src={fileIMG} alt="PNM Logo" className="mx-auto w-64 mt-[-50px] drop-shadow-lg transition-opacity duration-300" />
-            <h1 className={`text-2xl font-semibold mt-[-40px] transition-colors duration-300 ${titleClass}`}>Register Akun Baru</h1>
+            <img
+              src={fileIMG}
+              alt="PNM Logo"
+              className="mx-auto w-64 h-auto drop-shadow-lg transition-all duration-300"
+            />
+            <h1 className={`text-2xl font-semibold mt-6 transition-colors duration-300 ${titleClass}`}>Register Akun Baru</h1>
             <p className={`${textClass} text-sm mt-2 transition-colors duration-300`}>Silahkan isi form di bawah untuk membuat akun</p>
           </div>
 

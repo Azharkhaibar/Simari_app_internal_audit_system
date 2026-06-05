@@ -233,7 +233,7 @@ export const useKpmrLikuiditas = (options?: UseKpmrLikuiditasOptions): UseKpmrLi
       setGroups(transformedGroups);
     } catch (err) {
       console.error(`❌ Error fetching data for year ${year}:`, err);
-      setError(err?.response?.data?.message || err.message || 'Gagal memuat数据');
+      setError(err?.response?.data?.message || err.message || 'Gagal memuat data');
     } finally {
       setLoading(false);
     }

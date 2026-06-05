@@ -1,3 +1,4 @@
+// hukum-kpmr-ojk.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -9,11 +10,11 @@ import {
 } from 'typeorm';
 import { KpmrAspekHukum } from './hukum-kpmr-aspek.entity';
 
-@Entity('kpmr_hukum')
-@Index(['year', 'quarter'], { unique: true })
+@Entity('kpmr_hukum_ojk')
+@Index(['year', 'quarter'])  // ✅ HAPUS { unique: true }
 @Index(['isActive', 'year', 'quarter'])
 @Index(['createdAt'])
-export class KpmrHukum {
+export class KpmrHukumOjk {
   @PrimaryGeneratedColumn()
   id: number;
 

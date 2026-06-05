@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('inherent_references_kepatuhan')
+@Entity('inherent_references_kepatuhan_ojk')
 export class KepatuhanReference {
   @PrimaryGeneratedColumn()
   id: number;

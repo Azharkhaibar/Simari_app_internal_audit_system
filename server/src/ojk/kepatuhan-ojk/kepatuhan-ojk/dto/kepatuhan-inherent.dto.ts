@@ -150,6 +150,7 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
+// DTO untuk membuat Kepatuhan (header)
 export class CreateKepatuhanDto {
   @IsInt()
   @Min(2000)
@@ -173,6 +174,7 @@ export class CreateKepatuhanDto {
   version?: string;
 }
 
+// DTO untuk update Kepatuhan
 export class UpdateKepatuhanDto {
   @IsOptional()
   @IsInt()
@@ -217,6 +219,7 @@ export class UpdateKepatuhanDto {
   updatedBy?: string;
 }
 
+// DTO untuk Parameter (Create)
 export class CreateParameterDto {
   @IsOptional()
   @IsString()
@@ -241,6 +244,7 @@ export class CreateParameterDto {
   orderIndex?: number;
 }
 
+// DTO untuk Parameter (Update)
 export class UpdateParameterDto {
   @IsOptional()
   @IsString()
@@ -267,6 +271,7 @@ export class UpdateParameterDto {
   orderIndex?: number;
 }
 
+// DTO untuk Nilai (Create)
 export class CreateNilaiDto {
   @IsOptional()
   @IsString()
@@ -300,6 +305,7 @@ export class CreateNilaiDto {
   orderIndex?: number;
 }
 
+// DTO untuk Nilai (Update)
 export class UpdateNilaiDto {
   @IsOptional()
   @IsString()
@@ -334,18 +340,21 @@ export class UpdateNilaiDto {
   orderIndex?: number;
 }
 
+// DTO untuk Reorder Parameters
 export class ReorderParametersDto {
   @IsArray()
   @IsInt({ each: true })
   parameterIds: number[];
 }
 
+// DTO untuk Reorder Nilai
 export class ReorderNilaiDto {
   @IsArray()
   @IsInt({ each: true })
   nilaiIds: number[];
 }
 
+// DTO untuk Summary
 export class UpdateSummaryDto {
   @IsOptional()
   @IsNumber()
@@ -359,6 +368,7 @@ export class UpdateSummaryDto {
   computedAt?: Date;
 }
 
+// DTO untuk Import/Export
 export class ExportImportMetadataDto {
   @IsInt()
   @Min(2000)

@@ -1,3 +1,4 @@
+// operasional-kpmr.dto.ts
 import {
   IsInt,
   Min,
@@ -35,82 +36,58 @@ export enum RatingEnum {
   UNSATISFACTORY = 'Unsatisfactory',
 }
 
-// ==================== HELPER TRANSFORMERS - PERBAIKAN ====================
+// ==================== HELPER TRANSFORMERS ====================
 const transformNumber = ({ value }) => {
-  // Handle null, undefined, empty string
   if (value === null || value === undefined || value === '') {
     return undefined;
   }
-
-  // Handle string 'undefined', 'null'
   if (value === 'undefined' || value === 'null') {
     return undefined;
   }
-
-  // Handle jika sudah number
   if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
     return value;
   }
-
   const num = Number(value);
-
-  // Handle NaN atau Infinity
   if (isNaN(num) || !isFinite(num)) {
     return undefined;
   }
-
   return num;
 };
 
 const transformQuarter = ({ value }) => {
   if (!value && value !== 0) return undefined;
-
-  // Jika sudah dalam format Q1-Q4
   if (typeof value === 'string') {
     const upper = value.trim().toUpperCase();
     if (['Q1', 'Q2', 'Q3', 'Q4'].includes(upper)) {
       return upper;
     }
   }
-
-  // Jika berupa number 1-4
   const num = Number(value);
   if (!isNaN(num) && num >= 1 && num <= 4) {
     return `Q${num}`;
   }
-
-  // Jika string "1", "2", "3", "4"
   if (typeof value === 'string') {
     const parsed = parseInt(value, 10);
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 4) {
       return `Q${parsed}`;
     }
   }
-
   return undefined;
 };
 
 const transformIdToString = ({ value }) => {
-  // ✅ CEK NULL/UNDEFINED DULU
   if (value === null || value === undefined) {
     return undefined;
   }
-
-  // ✅ JIKA SUDAH STRING, KEMBALIKAN
   if (typeof value === 'string') {
     return value;
   }
-
-  // ✅ JIKA NUMBER, KONVERSI KE STRING
   if (typeof value === 'number' && !isNaN(value)) {
     return value.toString();
   }
-
-  // ✅ JIKA OBJECT DENGAN PROPERTY id
   if (typeof value === 'object' && value !== null && value.id) {
     return value.id.toString();
   }
-
   return undefined;
 };
 

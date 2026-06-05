@@ -1,4 +1,4 @@
-// src/entities/reputasi/reputasi-section.entity.ts
+// src/entities/strategik/reputasi-section.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { Quarter, Reputasi } from './reputasi.entity';
 
-@Entity('sections_reputasi')
+@Entity('sections_reputasi_holding')
 @Index(
   'IDX_REPUTASI_SECTION_PERIOD_UNIQUE',
   ['year', 'quarter', 'no', 'parameter'],
@@ -27,7 +27,7 @@ export class ReputasiSection {
   quarter: Quarter;
 
   @Column({ type: 'varchar', length: 50 })
-  no: string; // Contoh: "6.1"
+  no: string;
 
   @Column({
     name: 'bobot_section',
@@ -39,7 +39,7 @@ export class ReputasiSection {
   bobotSection: number;
 
   @Column({ type: 'varchar', length: 500 })
-  parameter: string; // Nama section
+  parameter: string;
 
   @Column({ type: 'text', nullable: true })
   description: string | null;
@@ -70,6 +70,22 @@ export class ReputasiSection {
     default: false,
   })
   isDeleted: boolean;
+
+  @Column({
+    name: 'created_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  createdBy: string | null;
+
+  @Column({
+    name: 'updated_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  updatedBy: string | null;
 
   @OneToMany(() => Reputasi, (reputasi) => reputasi.section)
   reputasiIndicators: Reputasi[];

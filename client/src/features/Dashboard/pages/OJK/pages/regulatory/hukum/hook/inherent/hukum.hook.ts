@@ -1,14 +1,14 @@
-// hooks/hukum.hook.ts
+// src/ojk/hukum-produk/hook/inherent/hukum.hook.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
-import hukumService, { CreateNilaiDto, CreateParameterDto, HukumEntity, UpdateNilaiDto, UpdateParameterDto } from '../../service/inherent/hukum.service';
+import hukumProdukService, { CreateNilaiDto, CreateParameterDto, HukumProdukOjkEntity, UpdateNilaiDto, UpdateParameterDto } from '../../service/inherent/hukum.service';
 
-export const useHukumIntegration = (initialYear?: number, initialQuarter?: number) => {
+export const useHukumProdukIntegration = (initialYear?: number, initialQuarter?: number) => {
   // State untuk data yang sedang aktif
   const [rows, setRows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentHukumId, setCurrentHukumId] = useState<number | null>(null);
-  const [currentHukumData, setCurrentHukumData] = useState<HukumEntity | null>(null);
+  const [currentInherentId, setCurrentInherentId] = useState<number | null>(null);
+  const [currentInherentData, setCurrentInherentData] = useState<HukumProdukOjkEntity | null>(null);
   const [year, setYear] = useState<number | null>(initialYear ?? null);
   const [quarter, setQuarter] = useState<number | null>(initialQuarter ?? null);
 
@@ -21,8 +21,8 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
       string,
       {
         rows: any[];
-        hukumId: number | null;
-        entity: HukumEntity | null;
+        inherentId: number | null;
+        entity: HukumProdukOjkEntity | null;
         timestamp: number;
       }
     >
@@ -46,83 +46,61 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
   };
 
   // ==============================
-  // FUNGSI getOrCreateData - PERBAIKAN DENGAN LOGGING DETAIL
+  // FUNGSI BARU: getOrCreateData
   // ==============================
 
   /**
    * Fungsi utama untuk mendapatkan atau membuat data
    * Menggunakan findOrCreate dari service
    */
-  const getOrCreateData = useCallback(
-    async (targetYear: number, targetQuarter: number, forceReload = false) => {
-      console.log(`[Hook] 🚀 getOrCreateData: ${targetYear}-Q${targetQuarter}, force: ${forceReload}`);
+  const getOrCreateData = useCallback(async (targetYear: number, targetQuarter: number, forceReload = false) => {
+    console.log(`[Hook] getOrCreateData: ${targetYear}-Q${targetQuarter}, force: ${forceReload}`);
 
-      const cacheKey = getCacheKey(targetYear, targetQuarter);
+    const cacheKey = getCacheKey(targetYear, targetQuarter);
 
-      // Skip jika sudah loading
-      if (loadingQueueRef.current.has(cacheKey) && !forceReload) {
-        console.log(`[Hook] ⏳ Load already in progress for ${cacheKey}`);
-        return null;
+    // Skip jika sudah loading
+    if (loadingQueueRef.current.has(cacheKey) && !forceReload) {
+      console.log(`[Hook] Load already in progress for ${cacheKey}`);
+      return null;
+    }
+
+    loadingQueueRef.current.add(cacheKey);
+
+    try {
+      // Gunakan findOrCreate dari service
+      const result = await hukumProdukService.findOrCreate(targetYear, targetQuarter);
+
+      if (!result.success) {
+        throw new Error(result.message);
       }
 
-      loadingQueueRef.current.add(cacheKey);
-
-      try {
-        // Gunakan findOrCreate dari service
-        console.log(`[Hook] 📡 Calling hukumService.findOrCreate for ${targetYear}-Q${targetQuarter}`);
-        const result = await hukumService.findOrCreate(targetYear, targetQuarter);
-
-        console.log(`[Hook] 📥 findOrCreate result:`, {
-          success: result.success,
-          isNew: result.isNew,
-          hasData: !!result.data,
-          message: result.message,
-        });
-
-        if (!result.success) {
-          console.error(`[Hook] ❌ findOrCreate gagal: ${result.message}`);
-          throw new Error(result.message);
-        }
-
-        if (!result.data) {
-          console.error(`[Hook] ❌ Data null setelah findOrCreate`);
-          throw new Error('Data tidak ditemukan dan gagal dibuat');
-        }
-
-        console.log(`[Hook] ✅ findOrCreate berhasil, data ID: ${result.data.id}, isNew: ${result.isNew}`);
-
-        // Format data untuk frontend
-        console.log(`[Hook] 🔄 Formatting data to frontend format...`);
-        const formattedRows = hukumService.formatToFrontend(result.data);
-        console.log(`[Hook] 📊 Formatted rows count: ${formattedRows.length}`);
-
-        // Update cache
-        updateCache(targetYear, targetQuarter, {
-          rows: formattedRows,
-          hukumId: result.data.id,
-          entity: result.data,
-        });
-
-        return {
-          rows: formattedRows,
-          hukumId: result.data.id,
-          entity: result.data,
-          isNew: result.isNew,
-        };
-      } catch (error: any) {
-        console.error(`[Hook] 💥 Error in getOrCreateData for ${cacheKey}:`, {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-          stack: error.stack,
-        });
-        throw error;
-      } finally {
-        loadingQueueRef.current.delete(cacheKey);
+      if (!result.data) {
+        throw new Error('Data tidak ditemukan dan gagal dibuat');
       }
-    },
-    [updateCache, getCacheKey],
-  );
+
+      // Format data untuk frontend
+      const formattedRows = hukumProdukService.formatToFrontend(result.data);
+
+      // Update cache
+      updateCache(targetYear, targetQuarter, {
+        rows: formattedRows,
+        inherentId: result.data.id,
+        entity: result.data,
+      });
+
+      return {
+        rows: formattedRows,
+        inherentId: result.data.id,
+        entity: result.data,
+        isNew: result.isNew,
+      };
+    } catch (error: any) {
+      console.error(`[Hook] Error in getOrCreateData for ${cacheKey}:`, error);
+      throw error;
+    } finally {
+      loadingQueueRef.current.delete(cacheKey);
+    }
+  }, []);
 
   /* =======================
      HELPER: Cache management
@@ -138,18 +116,18 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
   }, [year, quarter, getCacheKey]);
 
   const updateCache = useCallback(
-    (y: number, q: number, data: { rows: any[]; hukumId: number | null; entity: HukumEntity | null }) => {
+    (y: number, q: number, data: { rows: any[]; inherentId: number | null; entity: HukumProdukOjkEntity | null }) => {
       const key = getCacheKey(y, q);
       const cacheEntry = {
         rows: data.rows,
-        hukumId: data.hukumId,
+        inherentId: data.inherentId,
         entity: data.entity,
         timestamp: Date.now(),
       };
       cacheRef.current.set(key, cacheEntry);
-      console.log(`[Hook] 💾 Cache updated for ${key}:`, {
+      console.log(`[Hook] Cache updated for ${key}:`, {
         rowsCount: data.rows.length,
-        hukumId: data.hukumId,
+        inherentId: data.inherentId,
         hasEntity: !!data.entity,
       });
     },
@@ -161,12 +139,12 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
       const key = getCacheKey(y, q);
       const cached = cacheRef.current.get(key);
       if (cached) {
-        console.log(`[Hook] 🎯 Cache hit for ${key}:`, {
+        console.log(`[Hook] Cache hit for ${key}:`, {
           rowsCount: cached.rows.length,
           age: Date.now() - cached.timestamp,
         });
       } else {
-        console.log(`[Hook] ❌ Cache miss for ${key}`);
+        console.log(`[Hook] Cache miss for ${key}`);
       }
       return cached;
     },
@@ -178,11 +156,11 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
       if (y !== undefined && q !== undefined) {
         const key = getCacheKey(y, q);
         const deleted = cacheRef.current.delete(key);
-        console.log(`[Hook] 🧹 Cache cleared for ${key}: ${deleted ? 'success' : 'not found'}`);
+        console.log(`[Hook] Cache cleared for ${key}: ${deleted ? 'success' : 'not found'}`);
       } else {
         const size = cacheRef.current.size;
         cacheRef.current.clear();
-        console.log(`[Hook] 🧹 All cache cleared (${size} entries)`);
+        console.log(`[Hook] All cache cleared (${size} entries)`);
       }
     },
     [getCacheKey],
@@ -270,13 +248,13 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
       if (!validation.isValid) {
         throw new Error(validation.error || 'Judul tidak valid');
       }
-      return hukumService.formatParameterJudul(judul);
+      return hukumProdukService.formatParameterJudul(judul);
     },
     [validateParameterJudul],
   );
 
   const formatNilaiJudul = useCallback((judul: any): CreateNilaiDto['judul'] => {
-    return hukumService.formatNilaiJudul(judul);
+    return hukumProdukService.formatNilaiJudul(judul);
   }, []);
 
   const formatBobot = useCallback(
@@ -334,124 +312,90 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
   const loadData = useCallback(
     async (loadYear: number, loadQuarter: number, forceReload = false) => {
       const cacheKey = getCacheKey(loadYear, loadQuarter);
-      console.log(`[Hook] 📥 loadData called for ${cacheKey}, forceReload: ${forceReload}`);
+      console.log(`[Hook] loadData: ${cacheKey}`);
 
       if (!loadYear || !loadQuarter || loadQuarter < 1 || loadQuarter > 4) {
-        const errorMsg = 'Year dan quarter harus valid';
-        console.warn(`[Hook] ⚠️ ${errorMsg}: Year=${loadYear}, Quarter=${loadQuarter}`);
-
-        // Reset state jika year/quarter tidak valid
         if (year === loadYear && quarter === loadQuarter) {
           safeSet(setRows, []);
-          safeSet(setError, errorMsg);
-          safeSet(setActivePeriodKey, '');
+          safeSet(setError, 'Year/quarter tidak valid');
         }
         return [];
       }
 
-      // Cegah multiple loading untuk year-quarter yang sama
+      // Cegah double loading
       if (loadingQueueRef.current.has(cacheKey) && !forceReload) {
-        console.log(`[Hook] ⏳ Load already in progress for ${cacheKey}, skipping...`);
         const cached = getFromCache(loadYear, loadQuarter);
         return cached?.rows || [];
       }
 
       loadingQueueRef.current.add(cacheKey);
 
-      // PERBAIKAN PENTING: Only update state if this is the active period
       const isActivePeriod = year === loadYear && quarter === loadQuarter;
+
       if (isActivePeriod) {
         safeSet(setRows, []);
-        safeSet(setCurrentHukumId, null);
-        safeSet(setCurrentHukumData, null);
         safeSet(setError, null);
       }
-
       safeSet(setIsLoading, true);
 
-      // Cek cache jika tidak force reload
+      // Cek cache
       if (!forceReload) {
         const cached = getFromCache(loadYear, loadQuarter);
         if (cached) {
-          console.log(`[Hook] 💿 Loading from cache: ${cacheKey}`);
-
-          // Update state hanya jika ini adalah period yang aktif
           if (isActivePeriod) {
             safeSet(setRows, cached.rows);
-            safeSet(setCurrentHukumId, cached.hukumId);
-            safeSet(setCurrentHukumData, cached.entity);
-            safeSet(setYear, loadYear);
-            safeSet(setQuarter, loadQuarter);
-            safeSet(setActivePeriodKey, cacheKey);
+            safeSet(setCurrentInherentId, cached.inherentId);
+            safeSet(setCurrentInherentData, cached.entity);
             safeSet(setIsLoading, false);
           }
-
           loadingQueueRef.current.delete(cacheKey);
-          console.log(`[Hook] ✅ Cache loaded: ${cached.rows.length} rows`);
           return cached.rows;
         }
       }
 
       try {
-        console.log(`[Hook] 🌐 Loading data for ${cacheKey} from API`);
-
-        // Gunakan getOrCreateData yang baru
-        const data = await getOrCreateData(loadYear, loadQuarter, forceReload);
+        // ✅ Gunakan findOrCreate dengan retry
+        let data = await getOrCreateData(loadYear, loadQuarter, forceReload);
 
         if (!data) {
-          console.error(`[Hook] ❌ getOrCreateData returned null for ${cacheKey}`);
-          throw new Error('Gagal memuat atau membuat data');
+          // Retry sekali
+          await new Promise((r) => setTimeout(r, 500));
+          data = await getOrCreateData(loadYear, loadQuarter, true);
         }
 
-        console.log(`[Hook] ✅ getOrCreateData successful:`, {
-          hukumId: data.hukumId,
-          rowsCount: data.rows.length,
-          isNew: data.isNew,
-        });
+        if (!data) {
+          throw new Error('Gagal memuat atau membuat data setelah retry');
+        }
 
-        // Update cache untuk year-quarter ini
         updateCache(loadYear, loadQuarter, {
           rows: data.rows,
-          hukumId: data.hukumId,
+          inherentId: data.inherentId,
           entity: data.entity,
         });
 
-        // Update state hanya jika ini adalah period yang aktif
         if (isActivePeriod) {
           safeSet(setRows, data.rows);
-          safeSet(setCurrentHukumId, data.hukumId);
-          safeSet(setCurrentHukumData, data.entity);
+          safeSet(setCurrentInherentId, data.inherentId);
+          safeSet(setCurrentInherentData, data.entity);
           safeSet(setYear, loadYear);
           safeSet(setQuarter, loadQuarter);
           safeSet(setActivePeriodKey, cacheKey);
           safeSet(setIsLoading, false);
         }
 
-        console.log(`[Hook] ✅ Data loaded successfully for ${cacheKey}: ID=${data.hukumId || 'N/A'}, Parameters=${data.rows.length}, isNew=${data.isNew}`);
         loadingQueueRef.current.delete(cacheKey);
-
         return data.rows;
       } catch (e: any) {
-        console.error(`[Hook] 💥 Error loading data for ${cacheKey}:`, {
-          message: e.message,
-          response: e.response?.data,
-          status: e.response?.status,
-          stack: e.stack,
-        });
+        console.error(`[Hook] Error loading ${cacheKey}:`, e.message);
 
-        const errorMsg = e.response?.data?.message || e.message || 'Gagal memuat data';
-
-        // Update error state hanya jika ini adalah period yang aktif
         if (isActivePeriod) {
-          safeSet(setError, errorMsg);
+          safeSet(setError, e.message || 'Gagal memuat data');
           safeSet(setRows, []);
-          safeSet(setCurrentHukumId, null);
-          safeSet(setCurrentHukumData, null);
           safeSet(setIsLoading, false);
         }
 
         loadingQueueRef.current.delete(cacheKey);
-        throw e;
+        return [];
       }
     },
     [year, quarter, getCacheKey, getFromCache, updateCache, getOrCreateData],
@@ -463,46 +407,34 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
 
   const changeYearQuarter = useCallback(
     async (newYear: number, newQuarter: number) => {
-      console.log(`[Hook] 🔄 Changing from ${year}-Q${quarter} to ${newYear}-Q${newQuarter}`);
+      console.log(`[Hook] changeYearQuarter: ${year}-Q${quarter} → ${newYear}-Q${newQuarter}`);
 
-      // Validasi input
       if (!newYear || !newQuarter || newQuarter < 1 || newQuarter > 4) {
-        const errorMsg = 'Year dan quarter harus valid';
-        safeSet(setError, errorMsg);
-        throw new Error(errorMsg);
+        safeSet(setError, 'Year/quarter tidak valid');
+        return [];
       }
 
-      const newCacheKey = getCacheKey(newYear, newQuarter);
-      console.log(`[Hook] 🆕 New cache key: ${newCacheKey}`);
-
-      // PERBAIKAN PENTING: Reset state untuk periode baru
+      // Reset state
       safeSet(setRows, []);
-      safeSet(setCurrentHukumId, null);
-      safeSet(setCurrentHukumData, null);
+      safeSet(setCurrentInherentId, null);
+      safeSet(setCurrentInherentData, null);
       safeSet(setYear, newYear);
       safeSet(setQuarter, newQuarter);
-      safeSet(setActivePeriodKey, newCacheKey);
       safeSet(setError, null);
       safeSet(setIsLoading, true);
 
       try {
-        // Load data untuk year-quarter yang baru
         const data = await loadData(newYear, newQuarter, false);
-
-        console.log(`[Hook] ✅ Successfully changed to ${newYear}-Q${newQuarter}:`, {
-          parameters: data.length,
-          cacheKey: newCacheKey,
-        });
-
         return data;
       } catch (error) {
-        console.error('[Hook] 💥 Error changing year-quarter:', error);
-        safeSet(setError, 'Gagal memuat data untuk periode baru');
+        console.error('[Hook] Error changing quarter:', error);
+        safeSet(setError, 'Gagal memuat data');
+        safeSet(setRows, []);
         safeSet(setIsLoading, false);
-        throw error;
+        return [];
       }
     },
-    [year, quarter, loadData, getCacheKey],
+    [year, quarter, loadData],
   );
 
   /* =======================
@@ -510,15 +442,15 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
   ======================= */
 
   const validateAndGetCurrentContext = useCallback(() => {
-    if (!currentHukumId) {
+    if (!currentInherentId) {
       throw new Error('Data belum dimuat. Silakan load data terlebih dahulu.');
     }
     if (!year || !quarter) {
       throw new Error('Year dan quarter tidak valid untuk operasi ini');
     }
 
-    return { hukumId: currentHukumId, year, quarter };
-  }, [currentHukumId, year, quarter]);
+    return { inherentId: currentInherentId, year, quarter };
+  }, [currentInherentId, year, quarter]);
 
   const updateCacheAfterOperation = useCallback(
     async (targetYear?: number, targetQuarter?: number) => {
@@ -531,7 +463,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
       }
 
       try {
-        console.log(`[Hook] 🔄 Updating cache for ${effectiveYear}-Q${effectiveQuarter}`);
+        console.log(`[Hook] Updating cache for ${effectiveYear}-Q${effectiveQuarter}`);
 
         // Gunakan getOrCreateData untuk mendapatkan data terbaru
         const data = await getOrCreateData(effectiveYear, effectiveQuarter, true);
@@ -543,23 +475,23 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
         // Update cache
         updateCache(effectiveYear, effectiveQuarter, {
           rows: data.rows,
-          hukumId: data.hukumId,
+          inherentId: data.inherentId,
           entity: data.entity,
         });
 
         // Update state jika ini adalah period yang aktif
         if (year === effectiveYear && quarter === effectiveQuarter) {
           safeSet(setRows, data.rows);
-          safeSet(setCurrentHukumData, data.entity);
-          if (data.hukumId) {
-            safeSet(setCurrentHukumId, data.hukumId);
+          safeSet(setCurrentInherentData, data.entity);
+          if (data.inherentId) {
+            safeSet(setCurrentInherentId, data.inherentId);
           }
         }
 
-        console.log(`[Hook] ✅ Cache updated for ${effectiveYear}-Q${effectiveQuarter}: ${data.rows.length} parameters`);
+        console.log(`[Hook] Cache updated for ${effectiveYear}-Q${effectiveQuarter}: ${data.rows.length} parameters`);
         return data.rows;
       } catch (error) {
-        console.error(`[Hook] 💥 Error updating cache for ${effectiveYear}-Q${effectiveQuarter}:`, error);
+        console.error(`[Hook] Error updating cache for ${effectiveYear}-Q${effectiveQuarter}:`, error);
         throw error;
       }
     },
@@ -629,10 +561,10 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
         console.log('[Hook] Add parameter payload:', JSON.stringify(finalPayload, null, 2));
 
         // Gunakan loadOrCreateData dari service untuk memastikan data ada
-        await hukumService.loadOrCreateData(context.year, context.quarter);
+        await hukumProdukService.loadOrCreateData(context.year, context.quarter);
 
         // Tambahkan parameter
-        await hukumService.addParameter(context.hukumId, finalPayload);
+        await hukumProdukService.addParameter(context.inherentId, finalPayload);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -693,7 +625,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           if (!validation.isValid) {
             throw new Error(validation.error);
           }
-          payload.judul = hukumService.formatParameterJudul(dto.judul);
+          payload.judul = hukumProdukService.formatParameterJudul(dto.judul);
         }
         if (dto.bobot !== undefined) {
           const validation = validateBobot(dto.bobot);
@@ -727,7 +659,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
 
         console.log('[Hook] Update parameter payload:', JSON.stringify(payload, null, 2));
 
-        await hukumService.updateParameter(context.hukumId, parameterIdNum, payload);
+        await hukumProdukService.updateParameter(context.inherentId, parameterIdNum, payload);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -778,7 +710,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           throw new Error(`Parameter ID tidak valid: ${parameterId}`);
         }
 
-        await hukumService.copyParameter(context.hukumId, parameterIdNum);
+        await hukumProdukService.copyParameter(context.inherentId, parameterIdNum);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -816,7 +748,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           throw new Error(`Parameter ID tidak valid: ${parameterId}`);
         }
 
-        await hukumService.removeParameter(context.hukumId, parameterIdNum);
+        await hukumProdukService.removeParameter(context.inherentId, parameterIdNum);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -876,10 +808,10 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
         console.log('[Hook] Add nilai payload:', payload);
 
         // Gunakan loadOrCreateData dari service untuk memastikan data ada
-        await hukumService.loadOrCreateData(context.year, context.quarter);
+        await hukumProdukService.loadOrCreateData(context.year, context.quarter);
 
         // Tambahkan nilai
-        await hukumService.addNilai(context.hukumId, parameterIdNum, payload);
+        await hukumProdukService.addNilai(context.inherentId, parameterIdNum, payload);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -931,7 +863,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
 
         console.log('[Hook] Update nilai payload:', payload);
 
-        await hukumService.updateNilai(context.hukumId, parameterIdNum, nilaiIdNum, payload);
+        await hukumProdukService.updateNilai(context.inherentId, parameterIdNum, nilaiIdNum, payload);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -971,7 +903,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           throw new Error(`ID tidak valid: parameterId=${parameterId}, nilaiId=${nilaiId}`);
         }
 
-        await hukumService.copyNilai(context.hukumId, parameterIdNum, nilaiIdNum);
+        await hukumProdukService.copyNilai(context.inherentId, parameterIdNum, nilaiIdNum);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -1011,7 +943,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           throw new Error(`ID tidak valid: parameterId=${parameterId}, nilaiId=${nilaiId}`);
         }
 
-        await hukumService.removeNilai(context.hukumId, parameterIdNum, nilaiIdNum);
+        await hukumProdukService.removeNilai(context.inherentId, parameterIdNum, nilaiIdNum);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -1050,7 +982,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           throw new Error('Beberapa ID parameter tidak valid');
         }
 
-        await hukumService.reorderParameters(context.hukumId, parameterIdsNum);
+        await hukumProdukService.reorderParameters(context.inherentId, parameterIdsNum);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -1094,7 +1026,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
           throw new Error('Beberapa ID nilai tidak valid');
         }
 
-        await hukumService.reorderNilai(context.hukumId, parameterIdNum, nilaiIdsNum);
+        await hukumProdukService.reorderNilai(context.inherentId, parameterIdNum, nilaiIdsNum);
 
         // Update cache untuk year-quarter ini
         await updateCacheAfterOperation(context.year, context.quarter);
@@ -1142,7 +1074,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
         throw new Error('Year dan quarter diperlukan untuk reload data');
       }
 
-      console.log(`[Hook] 🔄 Reloading data for ${targetYear}-Q${targetQuarter}`);
+      console.log(`[Hook] Reloading data for ${targetYear}-Q${targetQuarter}`);
 
       // Clear cache untuk year-quarter ini
       clearCache(targetYear, targetQuarter);
@@ -1150,8 +1082,8 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
       // Jika ini adalah period yang aktif, update state
       if (year === targetYear && quarter === targetQuarter) {
         safeSet(setRows, []);
-        safeSet(setCurrentHukumId, null);
-        safeSet(setCurrentHukumData, null);
+        safeSet(setCurrentInherentId, null);
+        safeSet(setCurrentInherentData, null);
         safeSet(setError, null);
         safeSet(setIsLoading, true);
       }
@@ -1167,8 +1099,8 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
     safeSet(setRows, []);
     safeSet(setIsLoading, false);
     safeSet(setError, null);
-    safeSet(setCurrentHukumId, null);
-    safeSet(setCurrentHukumData, null);
+    safeSet(setCurrentInherentId, null);
+    safeSet(setCurrentInherentData, null);
     safeSet(setYear, null);
     safeSet(setQuarter, null);
     safeSet(setActivePeriodKey, '');
@@ -1200,11 +1132,11 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
   useEffect(() => {
     const initLoad = async () => {
       if (initialYear && initialQuarter) {
-        console.log(`[Hook] 🚀 Auto-loading data for ${initialYear}-Q${initialQuarter}`);
+        console.log(`[Hook] Auto-loading data for ${initialYear}-Q${initialQuarter}`);
         try {
           await loadData(initialYear, initialQuarter, true);
         } catch (error) {
-          console.error('[Hook] 💥 Auto-load failed:', error);
+          console.error('[Hook] Auto-load failed:', error);
           safeSet(setRows, []);
         }
       } else {
@@ -1230,8 +1162,8 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
     rows: Array.isArray(rows) ? rows : [],
     isLoading,
     error,
-    currentHukumId,
-    currentHukumData,
+    currentInherentId,
+    currentInherentData,
     year,
     quarter,
     activePeriodKey,
@@ -1285,7 +1217,7 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
 
     // Status helpers
     hasData: Array.isArray(rows) && rows.length > 0,
-    isReady: currentHukumId !== null && !isLoading,
+    isReady: currentInherentId !== null && !isLoading,
     hasError: error !== null,
 
     // Debug info
@@ -1296,4 +1228,4 @@ export const useHukumIntegration = (initialYear?: number, initialQuarter?: numbe
   };
 };
 
-export default useHukumIntegration;
+export default useHukumProdukIntegration;

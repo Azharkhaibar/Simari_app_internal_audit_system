@@ -1,4 +1,4 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Operasional/controllers/kpmr-operasional.service.ts
+// src/operasional/kpmr-operasional/kpmr-operasional.service.ts
 import {
   Injectable,
   NotFoundException,

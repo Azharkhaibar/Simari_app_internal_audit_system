@@ -1,3 +1,4 @@
+// operasional-kpmr-ojk.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +11,7 @@ import {
 import { KpmrAspekOperasional } from './operasional-kpmr-aspek.entity';
 
 @Entity('kpmr_operasional_ojk')
-@Index(['year', 'quarter'], { unique: true })
+@Index(['year', 'quarter'])  // ✅ HAPUS { unique: true }
 @Index(['isActive', 'year', 'quarter'])
 @Index(['createdAt'])
 export class KpmrOperasionalOjk {

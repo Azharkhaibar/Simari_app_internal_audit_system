@@ -19,6 +19,7 @@ import {
   DeleteResponse,
 } from '../../service/pasar/pasar.service';
 
+
 // EMPTY TEMPLATES
 export const emptyIndicator = {
   id: null,
@@ -230,7 +231,22 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
   const createSection = useCallback(async (data: CreatePasarSectionData): Promise<PasarSection> => {
     return withLoading(async () => {
       const newSection = await pasarApiService.createSection(data);
-      setSections((prev) => [...prev, newSection]);
+      setSections((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [...prev, newSection];
+      });
+      setSectionsWithIndicators((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [
+          ...prev,
+          {
+            ...newSection,
+            indicators: [],
+            totalWeighted: 0,
+            indicatorCount: 0,
+          },
+        ];
+      });
       return newSection;
     });
   }, []);
@@ -238,7 +254,14 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
   const updateSection = useCallback(async (id: number, data: UpdatePasarSectionData): Promise<PasarSection> => {
     return withLoading(async () => {
       const updatedSection = await pasarApiService.updateSection(id, data);
-      setSections((prev) => prev.map((section) => (section.id === id ? updatedSection : section)));
+      setSections((prev) => prev.map((section) => (section.id === id ? { ...section, ...updatedSection } : section)));
+      setSectionsWithIndicators((prev) =>
+        prev.map((section) =>
+          section.id === id
+            ? { ...section, ...updatedSection }
+            : section
+        )
+      );
       return updatedSection;
     });
   }, []);
@@ -285,18 +308,25 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
 
         console.log('📦 Raw response:', response);
 
+        // ADAPTASI STRUKTUR RESPONSE
         let sectionsData = [];
 
+        // Jika response langsung array
         if (Array.isArray(response)) {
           sectionsData = response;
-        } else if (response?.sections && Array.isArray(response.sections)) {
+        }
+        // Jika response punya properti sections
+        else if (response?.sections && Array.isArray(response.sections)) {
           sectionsData = response.sections;
-        } else if (response?.data && Array.isArray(response.data)) {
+        }
+        // Jika response punya properti data
+        else if (response?.data && Array.isArray(response.data)) {
           sectionsData = response.data;
         }
 
         console.log('📊 Extracted sectionsData:', sectionsData);
 
+        // Mapping data yang lengkap
         sectionsData = sectionsData.map((section) => ({
           ...section,
           indicators: (section.indicators || []).map((ind) => ({
@@ -306,15 +336,18 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
             bobotIndikator: ind.bobotIndikator || 0,
             sumberRisiko: ind.sumberRisiko || '',
             dampak: ind.dampak || '',
+            // === PEMBILANG & PENYEBUT ===
             pembilangLabel: ind.pembilangLabel || '',
             pembilangValue: ind.pembilangValue !== null && ind.pembilangValue !== undefined ? ind.pembilangValue.toString() : '',
             penyebutLabel: ind.penyebutLabel || '',
             penyebutValue: ind.penyebutValue !== null && ind.penyebutValue !== undefined ? ind.penyebutValue.toString() : '',
+            // === RISK LEVELS ===
             low: ind.low || '',
             lowToModerate: ind.lowToModerate || '',
             moderate: ind.moderate || '',
             moderateToHigh: ind.moderateToHigh || '',
             high: ind.high || '',
+            // === METODE & HASIL ===
             mode: ind.mode || 'RASIO',
             formula: ind.formula || '',
             isPercent: Boolean(ind.isPercent),
@@ -323,6 +356,7 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
             peringkat: ind.peringkat || 1,
             weighted: ind.weighted || '',
             keterangan: ind.keterangan || '',
+            // === INFORMASI SECTION ===
             sectionId: ind.sectionId || section.id,
             no: section.no,
             sectionLabel: section.parameter,
@@ -330,6 +364,7 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
             year: section.year || targetYear,
             quarter: section.quarter || targetQuarter,
             isValidated: ind.isValidated || false,
+            // === FIELD KOMPATIBILITAS DENGAN DATATABLE ===
             numeratorLabel: ind.pembilangLabel || '',
             numeratorValue: ind.pembilangValue !== null && ind.pembilangValue !== undefined ? ind.pembilangValue.toString() : '',
             denominatorLabel: ind.penyebutLabel || '',
@@ -366,16 +401,33 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
     return withLoading(async () => {
       const newIndikator = await pasarApiService.createIndikator(data);
 
+      // Update indicators list
       setIndikators((prev) => [...prev, newIndikator]);
 
+      // Update sections with indicators
       setSectionsWithIndicators((prev) => {
         const sectionIndex = prev.findIndex((s) => s.id === data.sectionId);
         if (sectionIndex !== -1) {
           const updated = [...prev];
           const section = updated[sectionIndex];
+
+          const mappedIndikator = {
+            ...newIndikator,
+            sectionId: newIndikator.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year,
+            quarter: section.quarter,
+            numeratorLabel: newIndikator.pembilangLabel || '',
+            numeratorValue: newIndikator.pembilangValue !== null && newIndikator.pembilangValue !== undefined ? newIndikator.pembilangValue.toString() : '',
+            denominatorLabel: newIndikator.penyebutLabel || '',
+            denominatorValue: newIndikator.penyebutValue !== null && newIndikator.penyebutValue !== undefined ? newIndikator.penyebutValue.toString() : '',
+          };
+
           updated[sectionIndex] = {
             ...section,
-            indicators: [...section.indicators, newIndikator],
+            indicators: [...section.indicators, mappedIndikator],
             indicatorCount: section.indicatorCount + 1,
             totalWeighted: section.totalWeighted + (newIndikator.weighted || 0),
           };
@@ -397,17 +449,37 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
 
         const updatedIndikator = await pasarApiService.updateIndikator(id, data);
 
+        // Find old indikator untuk adjust totalWeighted
         const oldIndikator = indikators.find((i) => i.id === id);
 
+        // Update indikators list
         setIndikators((prev) => prev.map((indikator) => (indikator.id === id ? updatedIndikator : indikator)));
 
+        // Update sections with indicators
         setSectionsWithIndicators((prev) =>
           prev.map((section) => {
             const indicatorIndex = section.indicators.findIndex((i) => i.id === id);
             if (indicatorIndex !== -1) {
               const newIndicators = [...section.indicators];
-              newIndicators[indicatorIndex] = updatedIndikator;
+              
+              const mappedIndikator = {
+                ...newIndicators[indicatorIndex],
+                ...updatedIndikator,
+                sectionId: updatedIndikator.sectionId || section.id,
+                no: section.no,
+                sectionLabel: section.parameter,
+                bobotSection: section.bobotSection,
+                year: section.year,
+                quarter: section.quarter,
+                numeratorLabel: updatedIndikator.pembilangLabel || '',
+                numeratorValue: updatedIndikator.pembilangValue !== null && updatedIndikator.pembilangValue !== undefined ? updatedIndikator.pembilangValue.toString() : '',
+                denominatorLabel: updatedIndikator.penyebutLabel || '',
+                denominatorValue: updatedIndikator.penyebutValue !== null && updatedIndikator.penyebutValue !== undefined ? updatedIndikator.penyebutValue.toString() : '',
+              };
+              
+              newIndicators[indicatorIndex] = mappedIndikator;
 
+              // Recalculate totalWeighted
               const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);
 
               return {
@@ -432,10 +504,13 @@ export const usePasar = (options?: UsePasarOptions): UsePasarReturn => {
         const result = await pasarApiService.deleteIndikator(id);
 
         if (result.success) {
+          // Find indikator untuk adjust totalWeighted
           const deletedIndikator = indikators.find((i) => i.id === id);
 
+          // Update indikators list
           setIndikators((prev) => prev.filter((indikator) => indikator.id !== id));
 
+          // Update sections with indicators
           setSectionsWithIndicators((prev) =>
             prev.map((section) => {
               const newIndicators = section.indicators.filter((i) => i.id !== id);

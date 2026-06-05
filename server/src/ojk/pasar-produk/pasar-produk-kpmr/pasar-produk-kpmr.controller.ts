@@ -24,15 +24,15 @@ import {
 } from '@nestjs/swagger';
 
 // PERBAIKAN: Import service dengan path yang benar
-import { KpmrPasarService } from './pasar-produk-kpmr.service';
+import { KpmrPasarProdukService } from './pasar-produk-kpmr.service';
 
 import {
-  CreateKpmrPasarOjkDto,
-  CreateKpmrAspekPasarDto,
-  CreateKpmrPertanyaanPasarDto,
-  UpdateKpmrAspekPasarDto,
-  UpdateKpmrPasarOjkDto,
-  UpdateKpmrPertanyaanPasarDto,
+  CreateKpmrPasarProdukOjkDto,
+  CreateKpmrAspekPasarProdukDto,
+  CreateKpmrPertanyaanPasarProdukDto,
+  UpdateKpmrAspekPasarProdukDto,
+  UpdateKpmrPasarProdukOjkDto,
+  UpdateKpmrPertanyaanPasarProdukDto,
   UpdateSkorDto,
   UpdateSummaryDto,
   BulkUpdateSkorDto,
@@ -44,16 +44,16 @@ import {
 } from './dto/pasar-produk-kpmr.dto';
 
 @ApiTags('PasarProdukKpmr')
-@Controller('kpmr-pasar')
+@Controller('kpmr-pasar-produk')
 @UseInterceptors(ClassSerializerInterceptor)
-export class KpmrPasarController {
-  constructor(private readonly kpmrService: KpmrPasarService) {}
+export class KpmrPasarProdukController {
+  constructor(private readonly kpmrService: KpmrPasarProdukService) {}
 
   // ========== KPMR ENDPOINTS ==========
   @Post()
   @ApiOperation({ summary: 'Buat KPMR baru' })
   async create(
-    @Body() createDto: CreateKpmrPasarOjkDto,
+    @Body() createDto: CreateKpmrPasarProdukOjkDto,
     @Request() req, // ✅ TAMBAHKAN REQUEST
   ): Promise<FrontendKpmrResponseDto> {
     const userId = req.user?.id || 'system'; // ✅ AMBIL USER ID
@@ -150,7 +150,7 @@ export class KpmrPasarController {
   @ApiOperation({ summary: 'Update KPMR' })
   async update(
     @Param('id') id: string,
-    @Body() updateDto: UpdateKpmrPasarOjkDto,
+    @Body() updateDto: UpdateKpmrPasarProdukOjkDto,
   ): Promise<FrontendKpmrResponseDto> {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) {
@@ -255,7 +255,7 @@ export class KpmrPasarController {
   @ApiOperation({ summary: 'Tambah aspek baru' })
   async createAspek(
     @Param('kpmrId') kpmrId: string,
-    @Body() createDto: CreateKpmrAspekPasarDto,
+    @Body() createDto: CreateKpmrAspekPasarProdukDto,
   ): Promise<FrontendAspekResponseDto> {
     const kpmrIdNum = parseInt(kpmrId, 10);
     if (isNaN(kpmrIdNum)) {
@@ -276,7 +276,7 @@ export class KpmrPasarController {
   @ApiOperation({ summary: 'Update aspek' })
   async updateAspek(
     @Param('id') id: string,
-    @Body() updateDto: UpdateKpmrAspekPasarDto,
+    @Body() updateDto: UpdateKpmrAspekPasarProdukDto,
   ): Promise<FrontendAspekResponseDto> {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) {
@@ -314,7 +314,7 @@ export class KpmrPasarController {
   @ApiOperation({ summary: 'Tambah pertanyaan baru' })
   async createPertanyaan(
     @Param('aspekId') aspekId: string,
-    @Body() createDto: CreateKpmrPertanyaanPasarDto,
+    @Body() createDto: CreateKpmrPertanyaanPasarProdukDto,
   ): Promise<FrontendPertanyaanResponseDto> {
     const aspekIdNum = parseInt(aspekId, 10);
     if (isNaN(aspekIdNum)) {
@@ -327,7 +327,7 @@ export class KpmrPasarController {
   @ApiOperation({ summary: 'Update pertanyaan' })
   async updatePertanyaan(
     @Param('id') id: string,
-    @Body() updateDto: UpdateKpmrPertanyaanPasarDto,
+    @Body() updateDto: UpdateKpmrPertanyaanPasarProdukDto,
   ): Promise<FrontendPertanyaanResponseDto> {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) {
@@ -419,9 +419,10 @@ export class KpmrPasarController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
-    // ✅ PANGGIL METHOD VALIDATE DENGAN ID
+
     return this.kpmrService.validateKpmrData(idNum);
   }
+
   @Get(':id/statistics')
   @ApiOperation({ summary: 'Get statistics KPMR' })
   async getStatistics(@Param('id') id: string): Promise<any> {

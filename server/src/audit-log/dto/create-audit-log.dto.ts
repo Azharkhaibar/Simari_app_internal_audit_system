@@ -5,13 +5,15 @@ import {
   IsNumber,
   IsEnum,
   IsObject,
+  ValidateIf,
 } from 'class-validator';
 import { ActionType, ModuleType } from '../entities/audit-log.entity';
 
 export class CreateAuditLogDto {
+  @ValidateIf((o) => o.userId !== null && o.userId !== undefined)
   @IsNumber()
   @IsOptional()
-  userId: number | null;
+  userId?: number | null;
 
   @IsEnum(ActionType)
   action: ActionType;
@@ -28,7 +30,7 @@ export class CreateAuditLogDto {
 
   @IsString()
   @IsOptional()
-  ip_address: string;
+  ip_address?: string;
 
   @IsBoolean()
   @IsOptional()

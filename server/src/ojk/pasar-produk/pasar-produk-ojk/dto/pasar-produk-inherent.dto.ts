@@ -1,4 +1,3 @@
-// src/ojk/pasar-produk/pasar-produk-ojk/dto/pasar-produk-inherent.dto.ts
 import {
   IsInt,
   Min,
@@ -151,8 +150,8 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
-// DTO untuk membuat PasarProdukOjk (header)
-export class CreatePasarProdukInherentDto {
+// DTO untuk membuat PasarProduk (header)
+export class CreatePasarProdukDto {
   @IsInt()
   @Min(2000)
   year: number;
@@ -175,8 +174,8 @@ export class CreatePasarProdukInherentDto {
   version?: string;
 }
 
-// DTO untuk update PasarProdukOjk
-export class UpdatePasarProdukInherentDto {
+// DTO untuk update PasarProduk
+export class UpdatePasarProdukDto {
   @IsOptional()
   @IsInt()
   @Min(2000)

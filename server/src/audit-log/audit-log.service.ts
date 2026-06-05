@@ -19,8 +19,7 @@ export class AuditLogService {
     try {
       const { userId, ip_address, ...rest } = auditLogData;
 
-      console.log('🔍 [BACKEND] Menerima audit log:', auditLogData);
-      console.log('🔍 [BACKEND] UserId dari payload:', userId);
+      this.logger.log(`Menerima audit log: module=${rest.module}, action=${rest.action}, userId=${userId}`);
 
       const auditLog = this.auditLogRepository.create({
         ...rest,
@@ -29,15 +28,12 @@ export class AuditLogService {
       });
 
       const savedLog = await this.auditLogRepository.save(auditLog);
-      console.log(' [BACKEND] Audit log berhasil dibuat:', {
-        id: savedLog.id,
-        userId: savedLog.userId,
-        module: savedLog.module,
-        action: savedLog.action,
-      })
+      
+      this.logger.log(`Audit log berhasil dibuat: id=${savedLog.id}, userId=${savedLog.userId}, module=${savedLog.module}, action=${savedLog.action}`);
+      
       return savedLog;
     } catch (error) {
-      console.error('❌ [BACKEND] Error creating audit log:', error);
+      this.logger.error('Error creating audit log:', error);
       throw error;
     }
   }
@@ -74,7 +70,7 @@ export class AuditLogService {
         );
       }
 
-      console.log('🔍 [BACKEND] Query conditions:', whereConditions);
+      this.logger.log(`Query conditions: ${JSON.stringify(whereConditions)}`);
 
       const [data, total] = await this.auditLogRepository.findAndCount({
         where: whereConditions,
@@ -86,11 +82,12 @@ export class AuditLogService {
         take: limit,
       });
 
-      console.log('🔍 [BACKEND] Audit logs loaded:', data.length);
+      this.logger.log(`Audit logs loaded: ${data.length} of ${total}`);
 
+      // Debug sample
       if (data.length > 0) {
         const sampleLog = data[0];
-        console.log('🔍 [BACKEND] Sample log structure:', {
+        this.logger.debug('Sample log structure:', {
           id: sampleLog.id,
           userId: sampleLog.userId,
           hasUser: !!sampleLog.user,
@@ -105,19 +102,6 @@ export class AuditLogService {
         });
       }
 
-      data.forEach((log, index) => {
-        const user = log.user;
-        console.log(`📝 Log ${index + 1}:`, {
-          id: log.id,
-          userId: log.userId,
-          hasUser: !!user,
-          user_id: user?.user_id,
-          userID: user?.userID,
-          role: user?.role,
-          gender: user?.gender,
-        });
-      });
-
       return {
         data,
         total,
@@ -131,6 +115,7 @@ export class AuditLogService {
     }
   }
 
+  // ✅ PERBAIKAN UTAMA: Semua kondisi pakai andWhere() — tidak ada if-else where()/andWhere()
   async findAllWithUser(query: AuditLogQueryDto) {
     try {
       const {
@@ -148,65 +133,41 @@ export class AuditLogService {
       const queryBuilder = this.auditLogRepository
         .createQueryBuilder('audit_log')
         .leftJoinAndSelect('audit_log.user', 'user')
-        .select([
-          'audit_log',
-          'user.user_id',
-          'user.userID',
-          'user.role',
-          'user.gender',
-        ])
         .orderBy('audit_log.timestamp', 'DESC')
         .skip(skip)
         .take(limit);
 
+      // ✅ SEMUA pakai andWhere — tanpa where() sama sekali
+      // Ini memastikan query tetap jalan meskipun tidak ada filter
       if (search) {
-        queryBuilder.where('audit_log.description LIKE :search', {
+        queryBuilder.andWhere('audit_log.description LIKE :search', {
           search: `%${search}%`,
         });
       }
 
       if (action) {
-        if (search) {
-          queryBuilder.andWhere('audit_log.action = :action', { action });
-        } else {
-          queryBuilder.where('audit_log.action = :action', { action });
-        }
+        queryBuilder.andWhere('audit_log.action = :action', { action });
       }
 
       if (module) {
-        if (search || action) {
-          queryBuilder.andWhere('audit_log.module = :module', { module });
-        } else {
-          queryBuilder.where('audit_log.module = :module', { module });
-        }
+        queryBuilder.andWhere('audit_log.module = :module', { module });
       }
 
       if (start_date && end_date) {
-        const startDate = new Date(start_date);
-        const endDate = new Date(`${end_date}T23:59:59.999Z`);
-
-        if (search || action || module) {
-          queryBuilder.andWhere('audit_log.timestamp BETWEEN :start AND :end', {
-            start: startDate,
-            end: endDate,
-          });
-        } else {
-          queryBuilder.where('audit_log.timestamp BETWEEN :start AND :end', {
-            start: startDate,
-            end: endDate,
-          });
-        }
+        queryBuilder.andWhere('audit_log.timestamp BETWEEN :start AND :end', {
+          start: new Date(start_date),
+          end: new Date(`${end_date}T23:59:59.999Z`),
+        });
       }
 
       const [data, total] = await queryBuilder.getManyAndCount();
 
-      console.log(
-        '🔍 [BACKEND] Enhanced query - Audit logs loaded:',
-        data.length,
-      );
+      this.logger.log(`Enhanced query - Audit logs loaded: ${data.length} of ${total}`);
+
+      // Debug sample
       if (data.length > 0) {
         const firstLog = data[0];
-        console.log('🔍 [BACKEND] First log with user:', {
+        this.logger.debug('First log with user:', {
           id: firstLog.id,
           userId: firstLog.userId,
           hasUser: !!firstLog.user,
@@ -313,22 +274,22 @@ export class AuditLogService {
 
   async delete(id: number): Promise<{ message: string }> {
     try {
-      this.logger.log(`ngehapus audit log dengan ID : ${id}`);
+      this.logger.log(`Menghapus audit log ID: ${id}`);
+      
       const auditLog = await this.auditLogRepository.findOne({
         where: { id },
       });
 
       if (!auditLog) {
-        throw new NotFoundException(
-          `Audit log dengan ID ${id} tidak ditemukan`,
-        );
+        throw new NotFoundException(`Audit log dengan ID ${id} tidak ditemukan`);
       }
 
       await this.auditLogRepository.remove(auditLog);
 
-      this.logger.log(`berhasil hapus log dengan ID : ${id}`);
+      this.logger.log(`Berhasil menghapus log ID: ${id}`);
+      
       return {
-        message: 'data log audit berhasil di hapus',
+        message: 'Data log audit berhasil dihapus',
       };
     } catch (error) {
       this.logger.error(`Error deleting audit log ${id}:`, error);
@@ -344,27 +305,14 @@ export class AuditLogService {
         throw new Error('ID logs tidak valid');
       }
 
-      this.logger.log(
-        `menghapus ${ids.length} audit logs: [${ids.join(', ')}]`,
-      );
+      this.logger.log(`Menghapus ${ids.length} audit logs: [${ids.join(', ')}]`);
 
       const auditLogs = await this.auditLogRepository.find({
         where: { id: In(ids) },
       });
 
-      // Ini terlalu strict
-      // if (auditLogs.length !== ids.length) {
-      //   const foundIds = auditLogs.map((log) => log.id);
-      //   const missingIds = ids.filter((id) => !foundIds.includes(id));
-      //   throw new NotFoundException(
-      //     `Beberapa audit log tidak ditemukan: ${missingIds.join(', ')}`,
-      //   );
-      // }
-
       if (auditLogs.length === 0) {
-        throw new NotFoundException(
-          'Tidak ada audit log yang ditemukan dengan ID yang diberikan',
-        );
+        throw new NotFoundException('Tidak ada audit log yang ditemukan dengan ID yang diberikan');
       }
 
       await this.auditLogRepository.remove(auditLogs);
@@ -376,7 +324,7 @@ export class AuditLogService {
         deletedCount: auditLogs.length,
       };
     } catch (error) {
-      this.logger.error(`Error deleting multiple audit logs:`, error);
+      this.logger.error('Error deleting multiple audit logs:', error);
       throw error;
     }
   }
@@ -384,19 +332,20 @@ export class AuditLogService {
   async deleteAll(): Promise<{ message: string; deletedCount: number }> {
     try {
       const count = await this.auditLogRepository.count();
+      
       if (count === 0) {
         return {
-          message: `tidak ada log audit data untuk di hapus`,
+          message: 'Tidak ada log audit untuk dihapus',
           deletedCount: 0,
         };
       }
 
       await this.auditLogRepository.clear();
 
-      this.logger.log(`berhasil menghapus semua ${count} audit logs`);
+      this.logger.log(`Berhasil menghapus semua ${count} audit logs`);
 
       return {
-        message: `semua ${count} audit log berhasil dihapus`,
+        message: `Semua ${count} audit log berhasil dihapus`,
         deletedCount: count,
       };
     } catch (err) {
@@ -450,9 +399,7 @@ export class AuditLogService {
 
       await this.auditLogRepository.remove(auditLogs);
 
-      this.logger.log(
-        `Berhasil menghapus ${auditLogs.length} audit logs berdasarkan filter`,
-      );
+      this.logger.log(`Berhasil menghapus ${auditLogs.length} audit logs berdasarkan filter`);
 
       return {
         message: `${auditLogs.length} log berhasil dihapus berdasarkan filter`,
@@ -460,9 +407,7 @@ export class AuditLogService {
       };
     } catch (error) {
       this.logger.error('Error deleting audit logs by filter:', error);
-      throw new Error(
-        `Gagal menghapus audit logs berdasarkan filter: ${error.message}`,
-      );
+      throw new Error(`Gagal menghapus audit logs berdasarkan filter: ${error.message}`);
     }
   }
 
@@ -475,7 +420,7 @@ export class AuditLogService {
         },
       });
 
-      console.log('🔍 [BACKEND] Relation test:', {
+      this.logger.log('Relation test:', {
         hasLog: !!testLog,
         userId: testLog?.userId,
         hasUser: !!testLog?.user,
@@ -491,7 +436,7 @@ export class AuditLogService {
 
       return testLog;
     } catch (error) {
-      console.error('❌ [BACKEND] Relation test error:', error);
+      this.logger.error('Relation test error:', error);
       throw error;
     }
   }
@@ -511,7 +456,6 @@ export class AuditLogService {
     if (user.userID) {
       return user.userID;
     }
-
     return `User ${user.user_id}`;
   }
 

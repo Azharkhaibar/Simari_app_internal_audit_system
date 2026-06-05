@@ -1,4 +1,6 @@
-import api_kredit_produk from "../kredit-produk-api.service";
+import api_kredit_produk from '../kredit-produk-api.service';
+
+// services/kpmr/kredit-produk-kpmr.service.ts
 
 // ========== DTO Interfaces ==========
 export interface KpmrSkorDto {
@@ -17,7 +19,7 @@ export interface KpmrIndicatorDto {
 }
 
 // ========== CREATE DTOs ==========
-export interface CreateKpmrKreditOjkDto {
+export interface CreateKpmrKreditProdukOjkDto {
   year: number;
   quarter: number;
   isActive?: boolean;
@@ -25,20 +27,20 @@ export interface CreateKpmrKreditOjkDto {
   version?: string;
   notes?: string;
   summary?: any;
-  aspekList?: CreateKpmrAspekKreditDto[];
+  aspekList?: CreateKpmrAspekKreditProdukDto[];
 }
 
-export interface CreateKpmrAspekKreditDto {
+export interface CreateKpmrAspekKreditProdukDto {
   nomor?: string;
   judul: string;
   bobot: number;
   deskripsi?: string;
   kpmrOjkId?: number;
   orderIndex?: number;
-  pertanyaanList?: CreateKpmrPertanyaanKreditDto[];
+  pertanyaanList?: CreateKpmrPertanyaanKreditProdukDto[];
 }
 
-export interface CreateKpmrPertanyaanKreditDto {
+export interface CreateKpmrPertanyaanKreditProdukDto {
   nomor?: string;
   pertanyaan: string;
   skor?: KpmrSkorDto;
@@ -50,7 +52,7 @@ export interface CreateKpmrPertanyaanKreditDto {
 }
 
 // ========== UPDATE DTOs ==========
-export interface UpdateKpmrAspekKreditDto {
+export interface UpdateKpmrAspekKreditProdukDto {
   nomor?: string;
   judul?: string;
   bobot?: number;
@@ -60,7 +62,7 @@ export interface UpdateKpmrAspekKreditDto {
   notes?: string;
 }
 
-export interface UpdateKpmrPertanyaanKreditDto {
+export interface UpdateKpmrPertanyaanKreditProdukDto {
   nomor?: string;
   pertanyaan?: string;
   skor?: KpmrSkorDto;
@@ -127,8 +129,8 @@ export interface FrontendPertanyaanResponse {
 }
 
 // ========== SERVICE CLASS ==========
-class KpmrKreditApiService {
-  private readonly BASE_PATH = '/kpmr-kredit';
+class KpmrKreditProdukApiService {
+  private readonly BASE_PATH = '/kpmr-kredit-produk';
   private readonly VALID_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'] as const;
   private readonly MIN_YEAR = 2000;
   private readonly MAX_YEAR = 2100;
@@ -199,7 +201,7 @@ class KpmrKreditApiService {
   }
 
   private handleApiError(error: any, defaultMessage: string): never {
-    console.error(`❌ [KPMR Kredit Service] Error:`, error);
+    console.error(`❌ [KPMR Kredit Produk Service] Error:`, error);
     if (error.code === 'ERR_NETWORK') {
       throw new Error('Tidak dapat terhubung ke server.');
     }
@@ -287,7 +289,7 @@ class KpmrKreditApiService {
 
   // ========== ASPEK OPERATIONS ==========
 
-  async createAspek(kpmrId: number | string, data: CreateKpmrAspekKreditDto): Promise<FrontendAspekResponse> {
+  async createAspek(kpmrId: number | string, data: CreateKpmrAspekKreditProdukDto): Promise<FrontendAspekResponse> {
     try {
       const cleanKpmrId = this.cleanId(kpmrId);
       const payload = {
@@ -306,7 +308,7 @@ class KpmrKreditApiService {
     }
   }
 
-  async updateAspek(id: number | string, data: UpdateKpmrAspekKreditDto): Promise<FrontendAspekResponse> {
+  async updateAspek(id: number | string, data: UpdateKpmrAspekKreditProdukDto): Promise<FrontendAspekResponse> {
     try {
       const cleanId = this.cleanId(id);
       const response = await api_kredit_produk.patch(`${this.BASE_PATH}/aspek/${cleanId}`, data);
@@ -327,11 +329,11 @@ class KpmrKreditApiService {
 
   // ========== PERTANYAAN OPERATIONS ==========
 
-  async createPertanyaan(aspekId: number | string, data: CreateKpmrPertanyaanKreditDto): Promise<FrontendPertanyaanResponse> {
+  async createPertanyaan(aspekId: number | string, data: CreateKpmrPertanyaanKreditProdukDto): Promise<FrontendPertanyaanResponse> {
     try {
       const cleanAspekId = this.cleanId(aspekId);
 
-      const payload: CreateKpmrPertanyaanKreditDto = {
+      const payload: CreateKpmrPertanyaanKreditProdukDto = {
         nomor: data.nomor || '',
         pertanyaan: data.pertanyaan.trim(),
         skor: data.skor || {},
@@ -367,7 +369,7 @@ class KpmrKreditApiService {
     }
   }
 
-  async updatePertanyaan(id: number | string, data: UpdateKpmrPertanyaanKreditDto): Promise<FrontendPertanyaanResponse> {
+  async updatePertanyaan(id: number | string, data: UpdateKpmrPertanyaanKreditProdukDto): Promise<FrontendPertanyaanResponse> {
     try {
       const cleanId = this.cleanId(id);
 
@@ -405,7 +407,7 @@ class KpmrKreditApiService {
         };
       }
 
-      console.log('[KPMR Kredit Service] Update pertanyaan payload:', JSON.stringify(payload, null, 2));
+      console.log('[KPMR Kredit Produk Service] Update pertanyaan payload:', JSON.stringify(payload, null, 2));
 
       const response = await api_kredit_produk.patch(`${this.BASE_PATH}/pertanyaan/${cleanId}`, payload);
       return response.data;
@@ -424,9 +426,9 @@ class KpmrKreditApiService {
   }
 
   // ========== CREATE KPMR - YANG DIPERBAIKI ==========
-  async createKpmr(data: CreateKpmrKreditOjkDto): Promise<FrontendKpmrResponse> {
+  async createKpmr(data: CreateKpmrKreditProdukOjkDto): Promise<FrontendKpmrResponse> {
     try {
-      console.log(`🆕 [KPMR Kredit Service] Creating KPMR:`, data);
+      console.log(`🆕 [KPMR Kredit Produk Service] Creating KPMR:`, data);
 
       // ✅ VALIDASI TIPE DATA
       console.log(`🔍 Year type: ${typeof data.year}, value: ${data.year}`);
@@ -447,7 +449,7 @@ class KpmrKreditApiService {
         // HAPUS baris ini: quarter: quarterMap[data.quarter] || `Q${data.quarter}`,
       };
 
-      console.log('📦 [KPMR Kredit Service] Sending payload:', payload);
+      console.log('📦 [KPMR Kredit Produk Service] Sending payload:', payload);
 
       const response = await api_kredit_produk.post(this.BASE_PATH, payload);
 
@@ -455,10 +457,10 @@ class KpmrKreditApiService {
         throw new Error('Response dari server tidak valid');
       }
 
-      console.log('✅ [KPMR Kredit Service] Response:', response.data);
+      console.log('✅ [KPMR Kredit Produk Service] Response:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('❌ [KPMR Kredit Service] Create error:', {
+      console.error('❌ [KPMR Kredit Produk Service] Create error:', {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
@@ -489,5 +491,5 @@ class KpmrKreditApiService {
   }
 }
 
-export const kpmrKreditApiService = new KpmrKreditApiService();
-export default kpmrKreditApiService;
+export const kpmrKreditProdukApiService = new KpmrKreditProdukApiService();
+export default kpmrKreditProdukApiService;

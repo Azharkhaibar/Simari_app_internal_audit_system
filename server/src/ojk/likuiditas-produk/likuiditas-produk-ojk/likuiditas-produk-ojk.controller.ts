@@ -1,4 +1,4 @@
-// src/ojk/likuiditas-produk/likuiditas-produk-ojk/likuiditas-produk-ojk.controller.ts
+// likuiditas-ojk.controller.ts
 import {
   Controller,
   Get,
@@ -24,35 +24,22 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { LikuiditasProdukOjkService } from './likuiditas-produk-ojk.service';
-// import {
-//   CreateLikuiditasProdukInherentDto,
-//   UpdateLikuiditasProdukInherentDto,
-//   CreateLikuiditasParameterDto,
-//   UpdateLikuiditasParameterDto,
-//   CreateLikuiditasNilaiDto,
-//   UpdateLikuiditasNilaiDto,
-//   ReorderLikuiditasParametersDto,
-//   ReorderLikuiditasNilaiDto,
-//   UpdateLikuiditasSummaryDto,
-//   LikuiditasImportExportDto,
-// } from './dto/likuiditas-produk-inherent.dto';
-
+import { LikuiditasService } from './likuiditas-produk-ojk.service';
 import {
-  CreateLikuiditasProdukInherentDto,
-  UpdateLikuiditasProdukInherentDto,
-  CreateLikuiditasParameterDto,
-  UpdateLikuiditasParameterDto,
-  CreateLikuiditasNilaiDto,
-  UpdateLikuiditasNilaiDto,
-  ReorderLikuiditasNilaiDto,
-  ReorderLikuiditasParametersDto,
-  UpdateLikuiditasSummaryDto,
-  LikuiditasImportExportDto,
-} from './dto/likuditas-produk-inherent.dto';
+  CreateLikuiditasDto,
+  UpdateLikuiditasDto,
+  CreateParameterDto,
+  UpdateParameterDto,
+  CreateNilaiDto,
+  UpdateNilaiDto,
+  ReorderParametersDto,
+  ReorderNilaiDto,
+  UpdateSummaryDto,
+  ImportExportDto,
+} from './dto/likuiditas-produk-inherent.dto';
 
-@ApiTags('Likuiditas Produk OJK')
-@Controller('likuiditas-produk-ojk')
+@ApiTags('Likuiditas')
+@Controller('likuiditas')
 @UseInterceptors(ClassSerializerInterceptor)
 @UsePipes(
   new ValidationPipe({
@@ -61,15 +48,13 @@ import {
     forbidNonWhitelisted: true,
   }),
 )
-export class LikuiditasProdukOjkController {
-  constructor(private readonly inherentService: LikuiditasProdukOjkService) {}
+export class LikuiditasController {
+  constructor(private readonly likuiditasService: LikuiditasService) {}
 
   // === CRUD UTAMA ===
 
   @Get()
-  @ApiOperation({
-    summary: 'Get all Likuiditas Produk OJK data or by year/quarter',
-  })
+  @ApiOperation({ summary: 'Get all Likuiditas data or by year/quarter' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
@@ -78,29 +63,41 @@ export class LikuiditasProdukOjkController {
     @Query('quarter') quarter?: number,
   ) {
     if (year && quarter) {
-      const result = await this.inherentService.findByYearQuarter(
-        year,
-        quarter,
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
+      const result = await this.likuiditasService.findByYearQuarter(
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      return {
+        success: true,
+        data: result || null,
+        exists: !!result,
+        message: result
+          ? `Data likuiditas ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data likuiditas belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.inherentService.getAll();
+
+    const allData = await this.likuiditasService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Get active Likuiditas Produk OJK data' })
+  @ApiOperation({ summary: 'Get active Likuiditas data' })
   @ApiResponse({
     status: 200,
     description: 'Active data retrieved successfully',
   })
   @ApiResponse({ status: 404, description: 'No active data found' })
   async getActive() {
-    const result = await this.inherentService.findActive();
+    const result = await this.likuiditasService.findActive();
     if (!result) {
       throw new NotFoundException('Tidak ada data aktif ditemukan');
     }
@@ -108,22 +105,12 @@ export class LikuiditasProdukOjkController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Likuiditas Produk OJK by ID' })
+  @ApiOperation({ summary: 'Get Likuiditas by ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const activeData = await this.inherentService.findActive();
-
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    const result = await this.inherentService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const result = await this.likuiditasService.findById(id);
     if (!result) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
@@ -131,46 +118,43 @@ export class LikuiditasProdukOjkController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new Likuiditas Produk OJK data' })
-  @ApiBody({ type: CreateLikuiditasProdukInherentDto })
+  @ApiOperation({ summary: 'Create new Likuiditas data' })
+  @ApiBody({ type: CreateLikuiditasDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(
-    @Body() createDto: CreateLikuiditasProdukInherentDto,
-    @Request() req,
-  ) {
+  async create(@Body() createDto: CreateLikuiditasDto, @Request() req) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.create(createDto, userId);
+    return this.likuiditasService.create(createDto, userId);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update Likuiditas Produk OJK data' })
+  @ApiOperation({ summary: 'Update Likuiditas data' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdateLikuiditasProdukInherentDto })
+  @ApiBody({ type: UpdateLikuiditasDto })
   @ApiResponse({ status: 200, description: 'Data updated successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateLikuiditasProdukInherentDto,
+    @Body() updateDto: UpdateLikuiditasDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.update(id, updateDto, userId);
+    return this.likuiditasService.update(id, updateDto, userId);
   }
 
   @Put(':id/summary')
   @ApiOperation({ summary: 'Update summary only' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdateLikuiditasSummaryDto })
+  @ApiBody({ type: UpdateSummaryDto })
   @ApiResponse({ status: 200, description: 'Summary updated successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async updateSummary(
     @Param('id', ParseIntPipe) id: number,
-    @Body() summaryDto: UpdateLikuiditasSummaryDto,
+    @Body() summaryDto: UpdateSummaryDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateSummary(id, summaryDto, userId);
+    return this.likuiditasService.updateSummary(id, summaryDto, userId);
   }
 
   @Put(':id/status')
@@ -185,48 +169,46 @@ export class LikuiditasProdukOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateActiveStatus(id, isActive, userId);
+    return this.likuiditasService.updateActiveStatus(id, isActive, userId);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete Likuiditas Produk OJK data' })
+  @ApiOperation({ summary: 'Delete Likuiditas data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data deleted successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.inherentService.remove(id);
+    return this.likuiditasService.remove(id);
   }
 
   // === OPERASI PARAMETER ===
 
   @Get(':id/parameters')
-  @ApiOperation({
-    summary: 'Get all parameters for specific Likuiditas Produk OJK',
-  })
+  @ApiOperation({ summary: 'Get all parameters for specific Likuiditas' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
     status: 200,
     description: 'Parameters retrieved successfully',
   })
-  async getParameters(@Param('id', ParseIntPipe) inherentId: number) {
-    const inherent = await this.getInherentByIdOrThrow(inherentId);
-    return inherent.parameters || [];
+  async getParameters(@Param('id', ParseIntPipe) likuiditasId: number) {
+    const likuiditas = await this.getLikuiditasByIdOrThrow(likuiditasId);
+    return likuiditas.parameters || [];
   }
 
   @Post(':id/parameters')
   @ApiOperation({ summary: 'Add new parameter' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: CreateLikuiditasParameterDto })
+  @ApiBody({ type: CreateParameterDto })
   @ApiResponse({ status: 201, description: 'Parameter added successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async addParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
-    @Body() createParamDto: CreateLikuiditasParameterDto,
+    @Param('id', ParseIntPipe) likuiditasId: number,
+    @Body() createParamDto: CreateParameterDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.addParameter(
-      inherentId,
+    return this.likuiditasService.addParameter(
+      likuiditasId,
       createParamDto,
       userId,
     );
@@ -236,18 +218,18 @@ export class LikuiditasProdukOjkController {
   @ApiOperation({ summary: 'Update parameter' })
   @ApiParam({ name: 'id', type: Number })
   @ApiParam({ name: 'parameterId', type: Number })
-  @ApiBody({ type: UpdateLikuiditasParameterDto })
+  @ApiBody({ type: UpdateParameterDto })
   @ApiResponse({ status: 200, description: 'Parameter updated successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async updateParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
-    @Body() updateParamDto: UpdateLikuiditasParameterDto,
+    @Body() updateParamDto: UpdateParameterDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateParameter(
-      inherentId,
+    return this.likuiditasService.updateParameter(
+      likuiditasId,
       parameterId,
       updateParamDto,
       userId,
@@ -257,16 +239,16 @@ export class LikuiditasProdukOjkController {
   @Put(':id/parameters/reorder')
   @ApiOperation({ summary: 'Reorder parameters' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: ReorderLikuiditasParametersDto })
+  @ApiBody({ type: ReorderParametersDto })
   @ApiResponse({
     status: 200,
     description: 'Parameters reordered successfully',
   })
   async reorderParameters(
-    @Param('id', ParseIntPipe) inherentId: number,
-    @Body() reorderDto: ReorderLikuiditasParametersDto,
+    @Param('id', ParseIntPipe) likuiditasId: number,
+    @Body() reorderDto: ReorderParametersDto,
   ) {
-    return this.inherentService.reorderParameters(inherentId, reorderDto);
+    return this.likuiditasService.reorderParameters(likuiditasId, reorderDto);
   }
 
   @Post(':id/parameters/:parameterId/copy')
@@ -276,12 +258,16 @@ export class LikuiditasProdukOjkController {
   @ApiResponse({ status: 201, description: 'Parameter copied successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async copyParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.copyParameter(inherentId, parameterId, userId);
+    return this.likuiditasService.copyParameter(
+      likuiditasId,
+      parameterId,
+      userId,
+    );
   }
 
   @Delete(':id/parameters/:parameterId')
@@ -291,13 +277,13 @@ export class LikuiditasProdukOjkController {
   @ApiResponse({ status: 200, description: 'Parameter deleted successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async removeParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.removeParameter(
-      inherentId,
+    return this.likuiditasService.removeParameter(
+      likuiditasId,
       parameterId,
       userId,
     );
@@ -311,12 +297,12 @@ export class LikuiditasProdukOjkController {
   @ApiParam({ name: 'parameterId', type: Number })
   @ApiResponse({ status: 200, description: 'Nilai retrieved successfully' })
   async getNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
   ) {
-    const inherent = await this.getInherentByIdOrThrow(inherentId);
+    const likuiditas = await this.getLikuiditasByIdOrThrow(likuiditasId);
 
-    const parameter = inherent.parameters?.find((p) => p.id === parameterId);
+    const parameter = likuiditas.parameters?.find((p) => p.id === parameterId);
     if (!parameter) {
       throw new NotFoundException(
         `Parameter dengan ID ${parameterId} tidak ditemukan`,
@@ -329,18 +315,18 @@ export class LikuiditasProdukOjkController {
   @ApiOperation({ summary: 'Add new nilai' })
   @ApiParam({ name: 'id', type: Number })
   @ApiParam({ name: 'parameterId', type: Number })
-  @ApiBody({ type: CreateLikuiditasNilaiDto })
+  @ApiBody({ type: CreateNilaiDto })
   @ApiResponse({ status: 201, description: 'Nilai added successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async addNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
-    @Body() createNilaiDto: CreateLikuiditasNilaiDto,
+    @Body() createNilaiDto: CreateNilaiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.addNilai(
-      inherentId,
+    return this.likuiditasService.addNilai(
+      likuiditasId,
       parameterId,
       createNilaiDto,
       userId,
@@ -352,19 +338,19 @@ export class LikuiditasProdukOjkController {
   @ApiParam({ name: 'id', type: Number })
   @ApiParam({ name: 'parameterId', type: Number })
   @ApiParam({ name: 'nilaiId', type: Number })
-  @ApiBody({ type: UpdateLikuiditasNilaiDto })
+  @ApiBody({ type: UpdateNilaiDto })
   @ApiResponse({ status: 200, description: 'Nilai updated successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async updateNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
-    @Body() updateNilaiDto: UpdateLikuiditasNilaiDto,
+    @Body() updateNilaiDto: UpdateNilaiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateNilai(
-      inherentId,
+    return this.likuiditasService.updateNilai(
+      likuiditasId,
       parameterId,
       nilaiId,
       updateNilaiDto,
@@ -376,14 +362,14 @@ export class LikuiditasProdukOjkController {
   @ApiOperation({ summary: 'Reorder nilai' })
   @ApiParam({ name: 'id', type: Number })
   @ApiParam({ name: 'parameterId', type: Number })
-  @ApiBody({ type: ReorderLikuiditasNilaiDto })
+  @ApiBody({ type: ReorderNilaiDto })
   @ApiResponse({ status: 200, description: 'Nilai reordered successfully' })
   async reorderNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
-    @Body() reorderDto: ReorderLikuiditasNilaiDto,
+    @Body() reorderDto: ReorderNilaiDto,
   ) {
-    return this.inherentService.reorderNilai(parameterId, reorderDto);
+    return this.likuiditasService.reorderNilai(parameterId, reorderDto);
   }
 
   @Post(':id/parameters/:parameterId/nilai/:nilaiId/copy')
@@ -394,14 +380,14 @@ export class LikuiditasProdukOjkController {
   @ApiResponse({ status: 201, description: 'Nilai copied successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async copyNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.copyNilai(
-      inherentId,
+    return this.likuiditasService.copyNilai(
+      likuiditasId,
       parameterId,
       nilaiId,
       userId,
@@ -416,14 +402,14 @@ export class LikuiditasProdukOjkController {
   @ApiResponse({ status: 200, description: 'Nilai deleted successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async removeNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) likuiditasId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.removeNilai(
-      inherentId,
+    return this.likuiditasService.removeNilai(
+      likuiditasId,
       parameterId,
       nilaiId,
       userId,
@@ -437,21 +423,18 @@ export class LikuiditasProdukOjkController {
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Export successful' })
   @ApiResponse({ status: 404, description: 'Data not found' })
-  async exportToExcel(@Param('id', ParseIntPipe) inherentId: number) {
-    return this.inherentService.exportToExcel(inherentId);
+  async exportToExcel(@Param('id', ParseIntPipe) likuiditasId: number) {
+    return this.likuiditasService.exportToExcel(likuiditasId);
   }
 
   @Post('import')
   @ApiOperation({ summary: 'Import data from Excel format' })
-  @ApiBody({ type: LikuiditasImportExportDto })
+  @ApiBody({ type: ImportExportDto })
   @ApiResponse({ status: 201, description: 'Import successful' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async importFromExcel(
-    @Body() importData: LikuiditasImportExportDto,
-    @Request() req,
-  ) {
+  async importFromExcel(@Body() importData: ImportExportDto, @Request() req) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.importFromExcel(importData, userId);
+    return this.likuiditasService.importFromExcel(importData, userId);
   }
 
   // === REFERENCE DATA ===
@@ -464,7 +447,19 @@ export class LikuiditasProdukOjkController {
     description: 'References retrieved successfully',
   })
   async getReferences(@Query('type') type?: string) {
-    return this.inherentService.getReferences(type);
+    return this.likuiditasService.getReferences(type);
+  }
+
+  // === VALIDATION ENDPOINTS ===
+
+  @Get(':id/validate')
+  @ApiOperation({ summary: 'Validate model terstruktur' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Validation completed' })
+  async validateModelTerstruktur(
+    @Param('id', ParseIntPipe) likuiditasId: number,
+  ) {
+    return this.likuiditasService.validateModelTerstruktur(likuiditasId);
   }
 
   // === UTILITY ENDPOINTS ===
@@ -478,68 +473,24 @@ export class LikuiditasProdukOjkController {
     @Param('year', ParseIntPipe) year: number,
     @Param('quarter', ParseIntPipe) quarter: number,
   ) {
-    const exists = await this.inherentService.findByYearQuarter(year, quarter);
+    const exists = await this.likuiditasService.findByYearQuarter(
+      year,
+      quarter,
+    );
     return { exists: !!exists, data: exists };
-  }
-
-  // === VALIDASI MODEL KOMPREHENSIF ===
-
-  @Get(':id/validate-komprehensif')
-  @ApiOperation({ summary: 'Validate comprehensive model parameters' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Validation completed' })
-  async validateKomprehensif(@Param('id', ParseIntPipe) id: number) {
-    return this.inherentService.validateModelLikuiditas(id);
-  }
-
-  // === STATISTICS ===
-
-  @Get(':id/statistics')
-  @ApiOperation({ summary: 'Get statistics for Likuiditas Produk OJK' })
-  @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({
-    status: 200,
-    description: 'Statistics retrieved successfully',
-  })
-  async getStatistics(@Param('id', ParseIntPipe) id: number) {
-    return this.inherentService.getStatistics(id);
   }
 
   // === HELPER METHODS ===
 
-  /**
-   * Helper method untuk mendapatkan inherent by ID
-   */
-  private async getInherentByIdOrThrow(inherentId: number) {
-    const activeData = await this.inherentService.findActive();
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
+  private async getLikuiditasByIdOrThrow(likuiditasId: number) {
+    const likuiditas = await this.likuiditasService.findById(likuiditasId);
 
-    const inherent = await this.inherentService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
-    if (!inherent) {
+    if (!likuiditas) {
       throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
+        `Data dengan ID ${likuiditasId} tidak ditemukan`,
       );
     }
 
-    if (inherent.id !== inherentId) {
-      throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
-      );
-    }
-
-    return inherent;
-  }
-
-  /**
-   * Method alternatif jika service punya findById
-   */
-  private async getInherentByIdDirect(inherentId: number) {
-    return this.getInherentByIdOrThrow(inherentId);
+    return likuiditas;
   }
 }

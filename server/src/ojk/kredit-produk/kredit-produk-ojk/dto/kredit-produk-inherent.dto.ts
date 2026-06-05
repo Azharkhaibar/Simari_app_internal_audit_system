@@ -1,4 +1,3 @@
-// src/ojk/kredit-produk/kredit-produk-ojk/dto/kredit-produk-inherent.dto.ts
 import {
   IsInt,
   Min,
@@ -151,8 +150,8 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
-// DTO untuk membuat KreditProdukOjk (header)
-export class CreateKreditProdukInherentDto {
+// DTO untuk membuat KreditProduk (header)
+export class CreateKreditProdukDto {
   @IsInt()
   @Min(2000)
   year: number;
@@ -175,8 +174,8 @@ export class CreateKreditProdukInherentDto {
   version?: string;
 }
 
-// DTO untuk update KreditProdukOjk
-export class UpdateKreditProdukInherentDto {
+// DTO untuk update KreditProduk
+export class UpdateKreditProdukDto {
   @IsOptional()
   @IsInt()
   @Min(2000)
@@ -475,3 +474,5 @@ export class ImportExportDto {
   @Type(() => ExportParameterDto)
   parameters: ExportParameterDto[];
 }
+
+export { CreateKreditProdukDto as CreateKreditDto, UpdateKreditProdukDto as UpdateKreditDto };

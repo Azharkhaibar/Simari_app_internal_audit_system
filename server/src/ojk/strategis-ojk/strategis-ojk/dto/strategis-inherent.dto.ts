@@ -150,8 +150,8 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
-// DTO untuk membuat StrategisOjk (header)
-export class CreateStrategisOjkDto {
+// DTO untuk membuat Strategis (header)
+export class CreateStrategisDto {
   @IsInt()
   @Min(2000)
   year: number;
@@ -174,8 +174,8 @@ export class CreateStrategisOjkDto {
   version?: string;
 }
 
-// DTO untuk update StrategisOjk
-export class UpdateStrategisOjkDto {
+// DTO untuk update Strategis
+export class UpdateStrategisDto {
   @IsOptional()
   @IsInt()
   @Min(2000)

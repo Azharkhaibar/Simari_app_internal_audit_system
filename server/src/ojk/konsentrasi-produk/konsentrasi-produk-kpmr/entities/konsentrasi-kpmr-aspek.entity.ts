@@ -1,5 +1,4 @@
-// src/ojk/konsentrasi/konsentrasi-kpmr/entities/konsentrasi-kpmr-aspek.entity.ts
-
+// konsentrasi-kpmr-aspek.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -11,10 +10,10 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { KpmrKonsentrasiOjk } from './konsentrasi-produk-kpmr.entity';
+import { KpmrKonsentrasiOjk } from './konsentrasi-produk-kpmr-ojk.entity';
 import { KpmrPertanyaanKonsentrasi } from './konsentrasi-kpmr-pertanyaan.entity';
 
-@Entity('kpmr_aspek_konsentrasi')
+@Entity('kpmr_aspek_konsentrasi_ojk')
 @Index(['kpmrOjkId', 'nomor'])
 @Index(['kpmrOjkId', 'orderIndex'])
 @Index(['kpmrOjkId', 'bobot'])

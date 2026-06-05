@@ -1,3 +1,4 @@
+// strategis-kpmr-ojk.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +11,7 @@ import {
 import { KpmrAspekStrategis } from './strategis-kpmr-aspek.entity';
 
 @Entity('kpmr_strategis_ojk')
-@Index(['year', 'quarter'], { unique: true })
+@Index(['year', 'quarter'])  // ✅ HAPUS { unique: true }
 @Index(['isActive', 'year', 'quarter'])
 @Index(['createdAt'])
 export class KpmrStrategisOjk {
@@ -26,7 +27,7 @@ export class KpmrStrategisOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => KpmrAspekStrategis, (aspek) => aspek.kpmrStrategis, {
+  @OneToMany(() => KpmrAspekStrategis, (aspek) => aspek.kpmrOjk, {
     cascade: true,
     eager: false,
   })

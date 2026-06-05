@@ -1,18 +1,19 @@
+// pasar-produk-kpmr.hook.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useToast } from '../../components/use-toast';
-import kpmrPasarApiService, {
+import kpmrPasarProdukApiService, {
   FrontendKpmrResponse,
   FrontendAspekResponse,
   FrontendPertanyaanResponse,
-  CreateKpmrAspekPasarDto,
-  CreateKpmrPertanyaanPasarDto,
-  UpdateKpmrAspekPasarDto,
-  UpdateKpmrPertanyaanPasarDto,
+  CreateKpmrAspekPasarProdukDto,
+  CreateKpmrPertanyaanPasarProdukDto,
+  UpdateKpmrAspekPasarProdukDto,
+  UpdateKpmrPertanyaanPasarProdukDto,
   UpdateSkorDto,
-  CreateKpmrPasarOjkDto, // ✅ TAMBAHKAN IMPORT INI
+  CreateKpmrPasarProdukOjkDto,
 } from '../../service/kpmr/pasar-produk-kpmr.service';
 
-interface UseKpmrPasarReturn {
+interface UseKpmrPasarProdukReturn {
   // State
   kpmr: FrontendKpmrResponse | null;
   rows: FrontendAspekResponse[];
@@ -24,16 +25,16 @@ interface UseKpmrPasarReturn {
   // Data operations
   loadKpmrByYearQuarter: (year: number, quarter: number) => Promise<void>;
   refreshKpmrData: () => Promise<FrontendAspekResponse[]>;
-  createKpmr: (year: number, quarter: number) => Promise<FrontendKpmrResponse | null>; // ✅ TAMBAHKAN
+  createKpmr: (year: number, quarter: number) => Promise<FrontendKpmrResponse | null>;
 
   // Aspek operations
-  addAspek: (kpmrId: number | string, aspekData: CreateKpmrAspekPasarDto) => Promise<FrontendAspekResponse>;
-  updateAspek: (id: number | string, aspekData: UpdateKpmrAspekPasarDto) => Promise<FrontendAspekResponse>;
+  addAspek: (kpmrId: number | string, aspekData: CreateKpmrAspekPasarProdukDto) => Promise<FrontendAspekResponse>;
+  updateAspek: (id: number | string, aspekData: UpdateKpmrAspekPasarProdukDto) => Promise<FrontendAspekResponse>;
   deleteAspek: (id: number | string) => Promise<void>;
 
   // Pertanyaan operations
-  addPertanyaan: (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanPasarDto) => Promise<FrontendPertanyaanResponse>;
-  updatePertanyaan: (id: number | string, pertanyaanData: UpdateKpmrPertanyaanPasarDto) => Promise<FrontendPertanyaanResponse>;
+  addPertanyaan: (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanPasarProdukDto) => Promise<FrontendPertanyaanResponse>;
+  updatePertanyaan: (id: number | string, pertanyaanData: UpdateKpmrPertanyaanPasarProdukDto) => Promise<FrontendPertanyaanResponse>;
   deletePertanyaan: (id: number | string) => Promise<void>;
   updateSkor: (id: number | string, quarter: string, skor: number) => Promise<FrontendPertanyaanResponse>;
 
@@ -46,7 +47,7 @@ interface UseKpmrPasarReturn {
   hasError: boolean;
 }
 
-export function useKpmrPasar(): UseKpmrPasarReturn {
+export function useKpmrPasarProduk(): UseKpmrPasarProdukReturn {
   const { toast } = useToast();
 
   const [kpmr, setKpmr] = useState<FrontendKpmrResponse | null>(null);
@@ -58,7 +59,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
 
   const loadingRef = useRef(false);
   const mountedRef = useRef(true);
-  const lastLoadedYearRef = useRef<{ year: number; quarter: number } | null>(null); // ✅ TAMBAHKAN
+  const lastLoadedYearRef = useRef<{ year: number; quarter: number } | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -73,10 +74,10 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
   };
 
   const cleanId = useCallback((id: string | number): number => {
-    return kpmrPasarApiService.cleanId(id);
+    return kpmrPasarProdukApiService.cleanId(id);
   }, []);
 
-  // ========== LOAD KPMR - PERBAIKAN ==========
+  // ========== LOAD KPMR ==========
   const loadKpmrByYearQuarter = useCallback(
     async (targetYear: number, targetQuarter: number) => {
       // ✅ CEK: Jika sudah pernah load dengan parameter yang sama, return
@@ -95,13 +96,13 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
       safeSet(setError, null);
 
       try {
-        const data = await kpmrPasarApiService.getKpmrByYearQuarter(targetYear, targetQuarter, true);
+        const data = await kpmrPasarProdukApiService.getKpmrByYearQuarter(targetYear, targetQuarter, true);
 
         if (!mountedRef.current) return;
 
         safeSet(setKpmr, data);
         safeSet(setCurrentKpmrId, data.id);
-        const frontendRows = kpmrPasarApiService.convertToFrontendFormat(data);
+        const frontendRows = kpmrPasarProdukApiService.convertToFrontendFormat(data);
         safeSet(setRows, frontendRows);
 
         // ✅ Simpan parameter yang sudah dimuat
@@ -117,7 +118,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           safeSet(setKpmr, null);
           safeSet(setCurrentKpmrId, null);
           safeSet(setRows, []);
-          lastLoadedYearRef.current = { year: targetYear, quarter: targetQuarter }; // ✅ Tetap simpan
+          lastLoadedYearRef.current = { year: targetYear, quarter: targetQuarter };
         } else {
           const errorMsg = err.message || 'Gagal memuat KPMR';
           safeSet(setError, errorMsg);
@@ -128,10 +129,10 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
         safeSet(setLoading, false);
       }
     },
-    [toast, kpmr], // ✅ TAMBAHKAN kpmr
+    [toast, kpmr],
   );
 
-  // ========== CREATE KPMR ==========
+  // ========== CREATE KPMR - YANG DIPERBAIKI ==========
   const createKpmr = useCallback(
     async (year: number, quarter: number): Promise<FrontendKpmrResponse | null> => {
       if (loadingRef.current) {
@@ -146,16 +147,23 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
       try {
         console.log(`🆕 [Hook] Creating KPMR for year ${year} Q${quarter}`);
 
-        const quarterMap: Record<number, string> = {
-          1: 'Q1',
-          2: 'Q2',
-          3: 'Q3',
-          4: 'Q4',
-        };
+        // ✅ PASTIKAN year dan quarter adalah number
+        const yearNum = Number(year);
+        const quarterNum = Number(quarter);
 
-        const payload: CreateKpmrLikuiditasOjkDto = {
-          year,
-          quarter: quarterMap[quarter] || `Q${quarter}`,
+        // ✅ VALIDASI
+        if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
+          throw new Error(`Tahun tidak valid: ${year}`);
+        }
+
+        if (isNaN(quarterNum) || quarterNum < 1 || quarterNum > 4) {
+          throw new Error(`Quarter tidak valid: ${quarter}`);
+        }
+
+        // ✅ KIRIM SEBAGAI NUMBER (1,2,3,4) LANGSUNG KE SERVICE
+        const payload: CreateKpmrPasarProdukOjkDto = {
+          year: yearNum,
+          quarter: quarterNum, // KIRIM NUMBER, JANGAN DIKONVERSI!
           isActive: true,
           version: '1.0',
           aspekList: [],
@@ -163,25 +171,25 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
 
         console.log('📦 [Hook] Sending payload:', payload);
 
-        const data = await kpmrLikuiditasApiService.createKpmr(payload);
+        const data = await kpmrPasarProdukApiService.createKpmr(payload);
 
         if (!mountedRef.current) return null;
 
-        // ✅ CEK APAKAH DATA VALID
+        // ✅ CEK DATA
         if (!data || !data.id) {
           throw new Error('Data KPMR tidak valid setelah dibuat');
         }
 
         safeSet(setKpmr, data);
         safeSet(setCurrentKpmrId, data.id);
-        const frontendRows = kpmrLikuiditasApiService.convertToFrontendFormat(data);
+        const frontendRows = kpmrPasarProdukApiService.convertToFrontendFormat(data);
         safeSet(setRows, frontendRows);
 
-        lastLoadedYearRef.current = { year, quarter };
+        lastLoadedYearRef.current = { year: yearNum, quarter: quarterNum };
 
         toast({
           title: 'Berhasil',
-          description: `KPMR untuk tahun ${year} Q${quarter} berhasil dibuat`,
+          description: `KPMR untuk tahun ${yearNum} Q${quarterNum} berhasil dibuat`,
         });
 
         return data;
@@ -210,26 +218,26 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
     [toast],
   );
 
-  // ========== REFRESH KPMR - PERBAIKAN ==========
+  // ========== REFRESH KPMR ==========
   const refreshKpmrData = useCallback(async (): Promise<FrontendAspekResponse[]> => {
     if (!kpmr?.id) return [];
 
     if (loadingRef.current) {
       console.log('⏳ [Hook] Refresh already in progress...');
-      return rows;
+      return [];
     }
 
     loadingRef.current = true;
-    safeSet(setLoading, true);
+    safeSet(setSaving, true); // use saving, NOT loading — avoids parent page-level loading gate
 
     try {
       const cleanIdNum = cleanId(kpmr.id);
-      const freshData = await kpmrPasarApiService.getKpmrWithRelations(cleanIdNum);
+      const freshData = await kpmrPasarProdukApiService.getKpmrWithRelations(cleanIdNum);
 
       if (!mountedRef.current) return [];
 
       safeSet(setKpmr, freshData);
-      const frontendRows = kpmrPasarApiService.convertToFrontendFormat(freshData);
+      const frontendRows = kpmrPasarProdukApiService.convertToFrontendFormat(freshData);
       safeSet(setRows, frontendRows);
 
       return frontendRows;
@@ -241,16 +249,16 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           variant: 'destructive',
         });
       }
-      return rows;
+      return [];
     } finally {
       loadingRef.current = false;
-      safeSet(setLoading, false);
+      safeSet(setSaving, false);
     }
-  }, [kpmr?.id, cleanId, toast, rows]);
+  }, [kpmr?.id, cleanId, toast]);
 
   // ========== ASPEK OPERATIONS ==========
   const addAspek = useCallback(
-    async (kpmrId: number | string, aspekData: CreateKpmrAspekPasarDto): Promise<FrontendAspekResponse> => {
+    async (kpmrId: number | string, aspekData: CreateKpmrAspekPasarProdukDto): Promise<FrontendAspekResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -272,7 +280,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           throw new Error('Bobot harus antara 0 dan 100');
         }
 
-        const payload: CreateKpmrAspekPasarDto = {
+        const payload: CreateKpmrAspekPasarProdukDto = {
           nomor: aspekData.nomor || '-',
           judul: aspekData.judul.trim(),
           bobot: bobotNum,
@@ -281,7 +289,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           pertanyaanList: aspekData.pertanyaanList || [],
         };
 
-        const newAspek = await kpmrPasarApiService.createAspek(cleanKpmrId, payload);
+        const newAspek = await kpmrPasarProdukApiService.createAspek(cleanKpmrId, payload);
 
         if (!mountedRef.current) return newAspek;
 
@@ -301,7 +309,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
   );
 
   const updateAspek = useCallback(
-    async (id: number | string, aspekData: UpdateKpmrAspekPasarDto): Promise<FrontendAspekResponse> => {
+    async (id: number | string, aspekData: UpdateKpmrAspekPasarProdukDto): Promise<FrontendAspekResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -323,7 +331,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           aspekData.bobot = bobotNum;
         }
 
-        const updatedAspek = await kpmrPasarApiService.updateAspek(cleanIdNum, aspekData);
+        const updatedAspek = await kpmrPasarProdukApiService.updateAspek(cleanIdNum, aspekData);
 
         if (!mountedRef.current) return updatedAspek;
 
@@ -353,7 +361,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
 
       try {
         const cleanIdNum = cleanId(id);
-        await kpmrPasarApiService.deleteAspek(cleanIdNum);
+        await kpmrPasarProdukApiService.deleteAspek(cleanIdNum);
 
         if (!mountedRef.current) return;
 
@@ -373,7 +381,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
 
   // ========== PERTANYAAN OPERATIONS ==========
   const addPertanyaan = useCallback(
-    async (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanPasarDto): Promise<FrontendPertanyaanResponse> => {
+    async (aspekId: number | string, pertanyaanData: CreateKpmrPertanyaanPasarProdukDto): Promise<FrontendPertanyaanResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -387,7 +395,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           throw new Error('Pertanyaan tidak boleh kosong');
         }
 
-        const payload: CreateKpmrPertanyaanPasarDto = {
+        const payload: CreateKpmrPertanyaanPasarProdukDto = {
           nomor: pertanyaanData.nomor || '',
           pertanyaan: pertanyaanData.pertanyaan.trim(),
           skor: pertanyaanData.skor || {},
@@ -403,7 +411,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           orderIndex: pertanyaanData.orderIndex || 0,
         };
 
-        const newPertanyaan = await kpmrPasarApiService.createPertanyaan(cleanAspekId, payload);
+        const newPertanyaan = await kpmrPasarProdukApiService.createPertanyaan(cleanAspekId, payload);
 
         if (!mountedRef.current) return newPertanyaan;
 
@@ -423,7 +431,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
   );
 
   const updatePertanyaan = useCallback(
-    async (id: number | string, pertanyaanData: UpdateKpmrPertanyaanPasarDto): Promise<FrontendPertanyaanResponse> => {
+    async (id: number | string, pertanyaanData: UpdateKpmrPertanyaanPasarProdukDto): Promise<FrontendPertanyaanResponse> => {
       if (loadingRef.current) throw new Error('Already saving');
 
       loadingRef.current = true;
@@ -437,7 +445,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           throw new Error('Pertanyaan tidak boleh kosong');
         }
 
-        const updatedPertanyaan = await kpmrPasarApiService.updatePertanyaan(cleanIdNum, pertanyaanData);
+        const updatedPertanyaan = await kpmrPasarProdukApiService.updatePertanyaan(cleanIdNum, pertanyaanData);
 
         if (!mountedRef.current) return updatedPertanyaan;
 
@@ -467,7 +475,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
 
       try {
         const cleanIdNum = cleanId(id);
-        await kpmrPasarApiService.deletePertanyaan(cleanIdNum);
+        await kpmrPasarProdukApiService.deletePertanyaan(cleanIdNum);
 
         if (!mountedRef.current) return;
 
@@ -499,7 +507,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
           quarter: quarter as 'Q1' | 'Q2' | 'Q3' | 'Q4',
           skor: skor,
         };
-        const updatedPertanyaan = await kpmrPasarApiService.updateSkor(cleanIdNum, updateSkorDto);
+        const updatedPertanyaan = await kpmrPasarProdukApiService.updateSkor(cleanIdNum, updateSkorDto);
 
         if (!mountedRef.current) return updatedPertanyaan;
 
@@ -530,7 +538,7 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
     // Data operations
     loadKpmrByYearQuarter,
     refreshKpmrData,
-    createKpmr, // ✅ TAMBAHKAN INI!
+    createKpmr,
 
     // Aspek operations
     addAspek,
@@ -553,4 +561,4 @@ export function useKpmrPasar(): UseKpmrPasarReturn {
   };
 }
 
-export default useKpmrPasar;
+export default useKpmrPasarProduk;

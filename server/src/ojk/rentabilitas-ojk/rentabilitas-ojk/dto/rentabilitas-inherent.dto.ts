@@ -1,4 +1,3 @@
-// src/ojk/rentabilitas-produk/rentabilitas-produk-ojk/dto/rentabilitas-inherent.dto.ts
 import {
   IsInt,
   Min,
@@ -151,8 +150,8 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
-// DTO untuk membuat RentabilitasProdukOjk (header)
-export class CreateRentabilitasInherentDto {
+// DTO untuk membuat Rentabilitas (header)
+export class CreateRentabilitasDto {
   @IsInt()
   @Min(2000)
   year: number;
@@ -175,8 +174,8 @@ export class CreateRentabilitasInherentDto {
   version?: string;
 }
 
-// DTO untuk update RentabilitasProdukOjk
-export class UpdateRentabilitasInherentDto {
+// DTO untuk update Rentabilitas
+export class UpdateRentabilitasDto {
   @IsOptional()
   @IsInt()
   @Min(2000)

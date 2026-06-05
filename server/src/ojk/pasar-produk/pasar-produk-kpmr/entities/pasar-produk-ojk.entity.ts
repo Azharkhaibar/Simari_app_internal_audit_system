@@ -1,3 +1,4 @@
+// pasar-produk-kpmr-ojk.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -7,13 +8,13 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
-import { KpmrAspekPasar } from './pasar-produk-kpmr-aspek.entity';
+import { KpmrAspekPasarProduk } from './pasar-produk-kpmr-aspek.entity';
 
-@Entity('kpmr_pasar_ojk')
-@Index(['year', 'quarter'], { unique: true })
-@Index(['isActive', 'year', 'quarter']) // ✅ TAMBAH
-@Index(['createdAt']) // ✅ TAMBAH
-export class KpmrPasarOjk {
+@Entity('kpmr_pasar_produk_ojk')
+@Index(['year', 'quarter'])  // ✅ HAPUS { unique: true }
+@Index(['isActive', 'year', 'quarter'])
+@Index(['createdAt'])
+export class KpmrPasarProdukOjk {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -26,11 +27,11 @@ export class KpmrPasarOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => KpmrAspekPasar, (aspek) => aspek.kpmrOjk, {
+  @OneToMany(() => KpmrAspekPasarProduk, (aspek) => aspek.kpmrOjk, {
     cascade: true,
     eager: false,
   })
-  aspekList?: KpmrAspekPasar[];
+  aspekList?: KpmrAspekPasarProduk[];
 
   @Column({ type: 'json', nullable: true })
   summary?: {

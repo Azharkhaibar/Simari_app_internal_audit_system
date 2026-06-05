@@ -1,5 +1,6 @@
 // src/features/Dashboard/pages/RiskProfile/pages/Kepatuhan/services/kepatuhan.service.ts
 import axios, { AxiosResponse } from 'axios';
+import { SectionsWithIndicatorsResponse } from '../../pasar/service/pasar/pasar.service';
 
 // ENUMS
 export enum CalculationMode {
@@ -15,7 +16,7 @@ export enum Quarter {
   Q4 = 'Q4',
 }
 
-// INTERFACES - Persis sama dengan strategik
+// INTERFACES
 export interface KepatuhanSection {
   id: number;
   no: string;
@@ -162,7 +163,12 @@ export interface Period {
   quarter: Quarter;
 }
 
-// UTILITY FUNCTIONS - Persis sama dengan strategik
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+}
+
+// UTILITY FUNCTIONS
 export const fmtNumber = (v: any): string => {
   if (v === '' || v == null) return '';
   const n = Number(v);
@@ -196,6 +202,12 @@ export const computeHasil = (ind: any): number | null => {
 
   const pemb = parseNum(ind.pembilangValue);
   const peny = parseNum(ind.penyebutValue);
+
+  // 🔹 Validasi untuk mode RASIO
+  if (mode === 'RASIO' && peny === 0) {
+    console.warn('Penyebut value adalah 0 untuk mode RASIO');
+    return null; // Kembalikan null, jangan throw error
+  }
 
   if (ind.formula && ind.formula.trim() !== '') {
     try {
@@ -240,6 +252,17 @@ export const computeWeightedAuto = (ind: any, sectionBobot: number): number => {
 export const transformIndicatorToBackend = (indicatorData: any, year: number, quarter: Quarter, sectionId: number, sectionData: any): CreateKepatuhanData => {
   const hasilNum = computeHasil(indicatorData);
 
+  // Validasi khusus untuk mode RASIO
+  let penyebutValue = indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined;
+
+  // Untuk mode RASIO, jika penyebut 0 atau undefined, set ke null agar backend menolak
+  if (indicatorData.mode === CalculationMode.RASIO) {
+    if (penyebutValue === 0 || penyebutValue === undefined || isNaN(penyebutValue)) {
+      console.warn('Penyebut value untuk mode RASIO tidak valid:', penyebutValue);
+      // Biarkan undefined, backend akan memberikan error validasi
+    }
+  }
+
   return {
     year,
     quarter,
@@ -263,7 +286,7 @@ export const transformIndicatorToBackend = (indicatorData: any, year: number, qu
     pembilangLabel: indicatorData.pembilangLabel?.trim() || undefined,
     pembilangValue: indicatorData.pembilangValue !== undefined && indicatorData.pembilangValue !== '' ? Number(indicatorData.pembilangValue) : undefined,
     penyebutLabel: indicatorData.penyebutLabel?.trim() || undefined,
-    penyebutValue: indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined,
+    penyebutValue: penyebutValue, // Gunakan hasil validasi
     hasil: hasilNum !== null ? hasilNum : undefined,
     hasilText: indicatorData.mode === CalculationMode.TEKS ? indicatorData.hasilText || indicatorData.keterangan || '' : undefined,
     peringkat: Number(indicatorData.peringkat) || 1,
@@ -322,7 +345,7 @@ export const rowsPerIndicator = (ind: any): number => {
   return 1 + (ind.mode === 'RASIO' ? 2 : 1);
 };
 
-// API SERVICE - Persis sama dengan strategik
+// API SERVICE
 class KepatuhanApiService {
   private baseUrl: string;
 
@@ -347,8 +370,8 @@ class KepatuhanApiService {
     return this.request<KepatuhanSection>('put', `/kepatuhan/sections/${id}`, data);
   }
 
-  async deleteSection(id: number): Promise<void> {
-    return this.request<void>('delete', `/kepatuhan/sections/${id}`);
+  async deleteSection(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/kepatuhan/sections/${id}`);
   }
 
   // ========== INDIKATOR API ==========
@@ -364,8 +387,26 @@ class KepatuhanApiService {
     return this.request<KepatuhanIndikator[]>('get', '/kepatuhan/indikators/period', null, { year, quarter });
   }
 
-  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<Array<KepatuhanSection & { indicators: KepatuhanIndikator[] }>> {
-    return this.request<Array<KepatuhanSection & { indicators: KepatuhanIndikator[] }>>('get', '/kepatuhan/indikators/sections-by-period', null, { year, quarter });
+  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<any> {
+    try {
+      console.log(`📡 Calling API: getSectionsWithIndicatorsByPeriod for ${year}-${quarter}`);
+
+      const params = new URLSearchParams();
+      params.append('year', String(year));
+      params.append('quarter', String(quarter));
+
+      const url = `${this.baseUrl}/kepatuhan/data/with-indicators?${params.toString()}`;
+      console.log('🔍 Full URL:', url);
+
+      const response = await axios.get(url);
+
+      console.log('✅ Response from backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error in getSectionsWithIndicatorsByPeriod:', error);
+      this.handleError(error);
+      throw error;
+    }
   }
 
   async searchIndikators(query?: string, year?: number, quarter?: Quarter): Promise<KepatuhanIndikator[]> {
@@ -385,8 +426,8 @@ class KepatuhanApiService {
     return this.request<KepatuhanIndikator>('put', `/kepatuhan/indikators/${id}`, data);
   }
 
-  async deleteIndikator(id: number): Promise<void> {
-    return this.request<void>('delete', `/kepatuhan/indikators/${id}`);
+  async deleteIndikator(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/kepatuhan/indikators/${id}`);
   }
 
   async getTotalWeightedByPeriod(year: number, quarter: Quarter): Promise<number> {
@@ -399,7 +440,10 @@ class KepatuhanApiService {
   }
 
   async duplicateIndikator(sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<KepatuhanIndikator> {
-    return this.request<KepatuhanIndikator>('post', `/kepatuhan/indikators/${sourceId}/duplicate`, null, { year: targetYear, quarter: targetQuarter });
+    return this.request<KepatuhanIndikator>('post', `/kepatuhan/indikators/${sourceId}/duplicate`, null, {
+      year: targetYear,
+      quarter: targetQuarter,
+    });
   }
 
   // ========== HELPER METHODS ==========
@@ -461,16 +505,5 @@ class KepatuhanApiService {
   }
 }
 
-// Export singleton instance and all utilities
+// Export singleton instance
 export const kepatuhanApiService = new KepatuhanApiService();
-// export {
-//   // Re-export semua utilities
-//   fmtNumber,
-//   formatHasilNumber,
-//   parseNum,
-//   computeHasil,
-//   computeWeightedAuto,
-//   transformIndicatorToBackend,
-//   transformIndicatorToFrontend,
-//   transformSectionToBackend,
-// };

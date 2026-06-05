@@ -312,82 +312,67 @@ export const useOperasionalProdukIntegration = (initialYear?: number, initialQua
   const loadData = useCallback(
     async (loadYear: number, loadQuarter: number, forceReload = false) => {
       const cacheKey = getCacheKey(loadYear, loadQuarter);
-      console.log(`[Hook] loadData called for ${cacheKey}, forceReload: ${forceReload}`);
+      console.log(`[Hook] loadData: ${cacheKey}`);
 
       if (!loadYear || !loadQuarter || loadQuarter < 1 || loadQuarter > 4) {
-        const errorMsg = 'Year dan quarter harus valid';
-        console.warn(`[Hook] ${errorMsg}: Year=${loadYear}, Quarter=${loadQuarter}`);
-
-        // Reset state jika year/quarter tidak valid
         if (year === loadYear && quarter === loadQuarter) {
           safeSet(setRows, []);
-          safeSet(setError, errorMsg);
-          safeSet(setActivePeriodKey, '');
+          safeSet(setError, 'Year/quarter tidak valid');
         }
         return [];
       }
 
-      // Cegah multiple loading untuk year-quarter yang sama
+      // Cegah double loading
       if (loadingQueueRef.current.has(cacheKey) && !forceReload) {
-        console.log(`[Hook] Load already in progress for ${cacheKey}, skipping...`);
         const cached = getFromCache(loadYear, loadQuarter);
         return cached?.rows || [];
       }
 
       loadingQueueRef.current.add(cacheKey);
 
-      // PERBAIKAN PENTING: Only update state if this is the active period
       const isActivePeriod = year === loadYear && quarter === loadQuarter;
+
       if (isActivePeriod) {
         safeSet(setRows, []);
-        safeSet(setCurrentInherentId, null);
-        safeSet(setCurrentInherentData, null);
         safeSet(setError, null);
       }
-
       safeSet(setIsLoading, true);
 
-      // Cek cache jika tidak force reload
+      // Cek cache
       if (!forceReload) {
         const cached = getFromCache(loadYear, loadQuarter);
         if (cached) {
-          console.log(`[Hook] Loading from cache: ${cacheKey}`);
-
-          // Update state hanya jika ini adalah period yang aktif
           if (isActivePeriod) {
             safeSet(setRows, cached.rows);
             safeSet(setCurrentInherentId, cached.inherentId);
             safeSet(setCurrentInherentData, cached.entity);
-            safeSet(setYear, loadYear);
-            safeSet(setQuarter, loadQuarter);
-            safeSet(setActivePeriodKey, cacheKey);
             safeSet(setIsLoading, false);
           }
-
           loadingQueueRef.current.delete(cacheKey);
-          console.log(`[Hook] Cache loaded: ${cached.rows.length} rows`);
           return cached.rows;
         }
       }
 
       try {
-        console.log(`[Hook] Loading data for ${cacheKey} from API`);
-
-        // Gunakan getOrCreateData yang baru
-        const data = await getOrCreateData(loadYear, loadQuarter, forceReload);
+        // ✅ Gunakan findOrCreate dengan retry
+        let data = await getOrCreateData(loadYear, loadQuarter, forceReload);
 
         if (!data) {
-          throw new Error('Gagal memuat atau membuat data');
+          // Retry sekali
+          await new Promise((r) => setTimeout(r, 500));
+          data = await getOrCreateData(loadYear, loadQuarter, true);
         }
 
-        // Update cache untuk year-quarter ini
+        if (!data) {
+          throw new Error('Gagal memuat atau membuat data setelah retry');
+        }
+
         updateCache(loadYear, loadQuarter, {
           rows: data.rows,
           inherentId: data.inherentId,
           entity: data.entity,
         });
 
-        // Update state hanya jika ini adalah period yang aktif
         if (isActivePeriod) {
           safeSet(setRows, data.rows);
           safeSet(setCurrentInherentId, data.inherentId);
@@ -398,26 +383,19 @@ export const useOperasionalProdukIntegration = (initialYear?: number, initialQua
           safeSet(setIsLoading, false);
         }
 
-        console.log(`[Hook] Data loaded successfully for ${cacheKey}: ID=${data.inherentId || 'N/A'}, Parameters=${data.rows.length}, isNew=${data.isNew}`);
         loadingQueueRef.current.delete(cacheKey);
-
         return data.rows;
       } catch (e: any) {
-        console.error(`[Hook] Error loading data for ${cacheKey}:`, e);
+        console.error(`[Hook] Error loading ${cacheKey}:`, e.message);
 
-        const errorMsg = e.response?.data?.message || e.message || 'Gagal memuat data';
-
-        // Update error state hanya jika ini adalah period yang aktif
         if (isActivePeriod) {
-          safeSet(setError, errorMsg);
+          safeSet(setError, e.message || 'Gagal memuat data');
           safeSet(setRows, []);
-          safeSet(setCurrentInherentId, null);
-          safeSet(setCurrentInherentData, null);
           safeSet(setIsLoading, false);
         }
 
         loadingQueueRef.current.delete(cacheKey);
-        throw e;
+        return [];
       }
     },
     [year, quarter, getCacheKey, getFromCache, updateCache, getOrCreateData],
@@ -429,46 +407,34 @@ export const useOperasionalProdukIntegration = (initialYear?: number, initialQua
 
   const changeYearQuarter = useCallback(
     async (newYear: number, newQuarter: number) => {
-      console.log(`[Hook] Changing from ${year}-Q${quarter} to ${newYear}-Q${newQuarter}`);
+      console.log(`[Hook] changeYearQuarter: ${year}-Q${quarter} → ${newYear}-Q${newQuarter}`);
 
-      // Validasi input
       if (!newYear || !newQuarter || newQuarter < 1 || newQuarter > 4) {
-        const errorMsg = 'Year dan quarter harus valid';
-        safeSet(setError, errorMsg);
-        throw new Error(errorMsg);
+        safeSet(setError, 'Year/quarter tidak valid');
+        return [];
       }
 
-      const newCacheKey = getCacheKey(newYear, newQuarter);
-      console.log(`[Hook] New cache key: ${newCacheKey}`);
-
-      // PERBAIKAN PENTING: Reset state untuk periode baru
+      // Reset state
       safeSet(setRows, []);
       safeSet(setCurrentInherentId, null);
       safeSet(setCurrentInherentData, null);
       safeSet(setYear, newYear);
       safeSet(setQuarter, newQuarter);
-      safeSet(setActivePeriodKey, newCacheKey);
       safeSet(setError, null);
       safeSet(setIsLoading, true);
 
       try {
-        // Load data untuk year-quarter yang baru
         const data = await loadData(newYear, newQuarter, false);
-
-        console.log(`[Hook] Successfully changed to ${newYear}-Q${newQuarter}:`, {
-          parameters: data.length,
-          cacheKey: newCacheKey,
-        });
-
         return data;
       } catch (error) {
-        console.error('[Hook] Error changing year-quarter:', error);
-        safeSet(setError, 'Gagal memuat data untuk periode baru');
+        console.error('[Hook] Error changing quarter:', error);
+        safeSet(setError, 'Gagal memuat data');
+        safeSet(setRows, []);
         safeSet(setIsLoading, false);
-        throw error;
+        return [];
       }
     },
-    [year, quarter, loadData, getCacheKey],
+    [year, quarter, loadData],
   );
 
   /* =======================

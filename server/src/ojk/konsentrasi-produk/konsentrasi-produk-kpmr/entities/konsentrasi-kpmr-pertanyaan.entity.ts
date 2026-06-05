@@ -1,5 +1,3 @@
-// src/ojk/konsentrasi/konsentrasi-kpmr/entities/konsentrasi-kpmr-pertanyaan.entity.ts
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -13,8 +11,8 @@ import {
 import { KpmrAspekKonsentrasi } from './konsentrasi-kpmr-aspek.entity';
 
 @Entity('kpmr_pertanyaan_konsentrasi')
-@Index(['aspekId', 'nomor'], { unique: false })
-@Index(['aspekId', 'orderIndex'], { unique: false })
+@Index(['aspekId', 'nomor'])
+@Index(['aspekId', 'orderIndex'])
 @Index(['aspekId', 'createdAt'])
 export class KpmrPertanyaanKonsentrasi {
   @PrimaryGeneratedColumn()

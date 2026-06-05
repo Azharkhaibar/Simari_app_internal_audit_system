@@ -230,7 +230,22 @@ export const useInvestasi = (options?: UseInvestasiOptions): UseInvestasiReturn 
   const createSection = useCallback(async (data: CreateInvestasiSectionData): Promise<InvestasiSection> => {
     return withLoading(async () => {
       const newSection = await investasiApiService.createSection(data);
-      setSections((prev) => [...prev, newSection]);
+      setSections((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [...prev, newSection];
+      });
+      setSectionsWithIndicators((prev) => {
+        if (prev.some((s) => s.id === newSection.id)) return prev;
+        return [
+          ...prev,
+          {
+            ...newSection,
+            indicators: [],
+            totalWeighted: 0,
+            indicatorCount: 0,
+          },
+        ];
+      });
       return newSection;
     });
   }, []);
@@ -238,7 +253,14 @@ export const useInvestasi = (options?: UseInvestasiOptions): UseInvestasiReturn 
   const updateSection = useCallback(async (id: number, data: UpdateInvestasiSectionData): Promise<InvestasiSection> => {
     return withLoading(async () => {
       const updatedSection = await investasiApiService.updateSection(id, data);
-      setSections((prev) => prev.map((section) => (section.id === id ? updatedSection : section)));
+      setSections((prev) => prev.map((section) => (section.id === id ? { ...section, ...updatedSection } : section)));
+      setSectionsWithIndicators((prev) =>
+        prev.map((section) =>
+          section.id === id
+            ? { ...section, ...updatedSection }
+            : section
+        )
+      );
       return updatedSection;
     });
   }, []);
@@ -378,7 +400,7 @@ export const useInvestasi = (options?: UseInvestasiOptions): UseInvestasiReturn 
     return withLoading(async () => {
       const newIndikator = await investasiApiService.createIndikator(data);
 
-      // Update indikators list
+      // Update indicators list
       setIndikators((prev) => [...prev, newIndikator]);
 
       // Update sections with indicators
@@ -387,9 +409,24 @@ export const useInvestasi = (options?: UseInvestasiOptions): UseInvestasiReturn 
         if (sectionIndex !== -1) {
           const updated = [...prev];
           const section = updated[sectionIndex];
+
+          const mappedIndikator = {
+            ...newIndikator,
+            sectionId: newIndikator.sectionId || section.id,
+            no: section.no,
+            sectionLabel: section.parameter,
+            bobotSection: section.bobotSection,
+            year: section.year,
+            quarter: section.quarter,
+            numeratorLabel: newIndikator.pembilangLabel || '',
+            numeratorValue: newIndikator.pembilangValue !== null && newIndikator.pembilangValue !== undefined ? newIndikator.pembilangValue.toString() : '',
+            denominatorLabel: newIndikator.penyebutLabel || '',
+            denominatorValue: newIndikator.penyebutValue !== null && newIndikator.penyebutValue !== undefined ? newIndikator.penyebutValue.toString() : '',
+          };
+
           updated[sectionIndex] = {
             ...section,
-            indicators: [...section.indicators, newIndikator],
+            indicators: [...section.indicators, mappedIndikator],
             indicatorCount: section.indicatorCount + 1,
             totalWeighted: section.totalWeighted + (newIndikator.weighted || 0),
           };
@@ -423,7 +460,23 @@ export const useInvestasi = (options?: UseInvestasiOptions): UseInvestasiReturn 
             const indicatorIndex = section.indicators.findIndex((i) => i.id === id);
             if (indicatorIndex !== -1) {
               const newIndicators = [...section.indicators];
-              newIndicators[indicatorIndex] = updatedIndikator;
+              
+              const mappedIndikator = {
+                ...newIndicators[indicatorIndex],
+                ...updatedIndikator,
+                sectionId: updatedIndikator.sectionId || section.id,
+                no: section.no,
+                sectionLabel: section.parameter,
+                bobotSection: section.bobotSection,
+                year: section.year,
+                quarter: section.quarter,
+                numeratorLabel: updatedIndikator.pembilangLabel || '',
+                numeratorValue: updatedIndikator.pembilangValue !== null && updatedIndikator.pembilangValue !== undefined ? updatedIndikator.pembilangValue.toString() : '',
+                denominatorLabel: updatedIndikator.penyebutLabel || '',
+                denominatorValue: updatedIndikator.penyebutValue !== null && updatedIndikator.penyebutValue !== undefined ? updatedIndikator.penyebutValue.toString() : '',
+              };
+              
+              newIndicators[indicatorIndex] = mappedIndikator;
 
               // Recalculate totalWeighted
               const newTotalWeighted = newIndicators.reduce((sum, ind) => sum + (ind.weighted || 0), 0);

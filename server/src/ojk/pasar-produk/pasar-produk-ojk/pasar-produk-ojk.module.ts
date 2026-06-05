@@ -1,24 +1,26 @@
-// src/ojk/pasar-produk/pasar-produk-ojk/pasar-produk-ojk.module.ts
+// pasar-produk.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { PasarProdukOjkService } from './pasar-produk-ojk.service';
-import { PasarProdukOjkController } from './pasar-produk-ojk.controller';
-import { PasarProdukOjk } from './entities/pasar-produk-ojk.entity';
-import { PasarParameter } from './entities/pasar-produk-parameter.entity';
-import { PasarNilai } from './entities/pasar-produk-nilai.entity';
-import { InherentReferencePasar } from './entities/pasar-inherent-refetences.entity';
+import { PasarProduk } from './entities/pasar-produk-ojk.entity';
+import { PasarProdukParameter } from './entities/pasar-produk-parameter.entity';
+import { PasarProdukNilai } from './entities/pasar-produk-nilai.entity';
+import { PasarProdukReference } from './entities/pasar-produk-inherent-references.entity';
+import { OjkModule } from 'src/ojk/ojk-category/entities/ojk-category.entity';
+import { PasarProdukService } from './pasar-produk-ojk.service';
+import { PasarProdukController } from './pasar-produk-ojk.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      PasarProdukOjk,
-      PasarParameter,
-      PasarNilai,
-      InherentReferencePasar,
+      PasarProduk,
+      PasarProdukParameter,
+      PasarProdukNilai,
+      PasarProdukReference,
+      OjkModule, // ⬅️ TAMBAHKAN
     ]),
   ],
-  controllers: [PasarProdukOjkController],
-  providers: [PasarProdukOjkService],
-  exports: [PasarProdukOjkService],
+  controllers: [PasarProdukController],
+  providers: [PasarProdukService],
+  exports: [PasarProdukService],
 })
 export class PasarProdukOjkModule {}

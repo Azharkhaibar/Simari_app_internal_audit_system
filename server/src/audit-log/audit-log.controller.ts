@@ -12,19 +12,23 @@ import {
   HttpStatus,
   NotFoundException,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
-import express from 'express';
+import type { Response, Request } from 'express';
 import { AuditLogService } from './audit-log.service';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
 import { AuditLogQueryDto } from './dto/audit-log-query.dto';
 import { ActionType, ModuleType } from './entities/audit-log.entity';
+import { JwtAuthGuard } from 'src/auth/guard/jwt-auth.guard';
 
 @Controller('audit-logs')
+@UseGuards(JwtAuthGuard)
 export class AuditLogController {
+
   constructor(private readonly auditLogService: AuditLogService) {}
 
   @Post()
-  async create(@Body() dto: CreateAuditLogDto, @Req() req: express.Request) {
+  async create(@Body() dto: CreateAuditLogDto, @Req() req: Request) {
     console.log('🔍 [CONTROLLER] Creating audit log:', dto);
 
     let ipAddress = '';
@@ -63,8 +67,21 @@ export class AuditLogController {
       ipAddress = 'unknown';
     }
 
+    let finalUserId = dto.userId;
+    if (finalUserId == null) {
+      const user = (req as any).user;
+      if (user?.sub != null) {
+        finalUserId = Number(user.sub);
+      } else if (user?.user_id != null) {
+        finalUserId = Number(user.user_id);
+      } else if (user?.id != null) {
+        finalUserId = Number(user.id);
+      }
+    }
+
     const auditLogData = {
       ...dto,
+      userId: finalUserId,
       ip_address: ipAddress,
     };
 
@@ -109,7 +126,7 @@ export class AuditLogController {
   @Get('export')
   async exportToExcel(
     @Query() query: AuditLogQueryDto,
-    @Res() res: express.Response,
+    @Res() res: Response,
   ) {
     try {
       const data = await this.auditLogService.exportToExcel(query);
@@ -149,7 +166,7 @@ export class AuditLogController {
     }
   }
 
-  @Delete('batch/delete')
+  @Post('batch/delete')
   async deleteMultipleAuditLogs(
     @Body() body: { ids: number[] },
   ): Promise<{ message: string; deletedCount: number }> {
@@ -173,6 +190,9 @@ export class AuditLogController {
       if (error instanceof NotFoundException) {
         throw new HttpException(error.message, HttpStatus.NOT_FOUND);
       }
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new HttpException(
         error.message || 'Gagal menghapus audit logs',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -180,7 +200,7 @@ export class AuditLogController {
     }
   }
 
-  @Delete('filter/delete')
+  @Delete('filter')
   async deleteByFilter(
     @Query()
     filters: {
@@ -191,6 +211,7 @@ export class AuditLogController {
     },
   ): Promise<{ message: string; deletedCount: number }> {
     try {
+      // Validasi tanggal
       if (filters.start_date && filters.end_date) {
         const startDate = new Date(filters.start_date);
         const endDate = new Date(filters.end_date);
@@ -210,6 +231,22 @@ export class AuditLogController {
         }
       }
 
+      // Validasi action jika ada
+      if (filters.action && !Object.values(ActionType).includes(filters.action as ActionType)) {
+        throw new HttpException(
+          `Action '${filters.action}' tidak valid`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Validasi module jika ada
+      if (filters.module && !Object.values(ModuleType).includes(filters.module as ModuleType)) {
+        throw new HttpException(
+          `Module '${filters.module}' tidak valid`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       const convertedFilters = {
         start_date: filters.start_date,
         end_date: filters.end_date,
@@ -217,7 +254,7 @@ export class AuditLogController {
         module: filters.module as ModuleType,
       };
 
-      return await this.auditLogService.deleteByFilter(convertedFilters); // ✅ Fixed method name
+      return await this.auditLogService.deleteByFilter(convertedFilters);
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -229,7 +266,7 @@ export class AuditLogController {
     }
   }
 
-  @Delete('all/delete')
+  @Delete('all')
   async deleteAllAuditLogs(): Promise<{
     message: string;
     deletedCount: number;

@@ -13,6 +13,8 @@ import ToastNotification from './components/kpmr-pasar/ToastNotification';
 
 // ==== Hooks & Services ====
 import { usePasar } from './hooks/pasar/pasar.hook';
+import { useAuditLog } from '../../../audit-log/hooks/audit-log.hooks.js';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 
 // ==== Section Inheritance Utils ====
 import {
@@ -270,6 +272,25 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
 
   const clearToast = () => setToast({ show: false, message: '', type: 'success' });
 
+  // ========== AUDIT LOG ==========
+  const { user: authUser } = useAuth();
+  const { logCreate, logUpdate, logDelete, logExport } = useAuditLog();
+
+  const getCurrentUser = () => {
+    if (authUser && authUser.user_id) {
+      return { id: authUser.user_id, name: authUser.userID || authUser.username || 'Unknown', role: authUser.role || 'User' };
+    }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) {
+        return { id: storedUser.user_id, name: storedUser.userID || storedUser.username || 'Unknown', role: storedUser.role || 'User' };
+      }
+    } catch (e) { console.warn('Cannot parse user from localStorage:', e); }
+    return { id: null, name: 'System', role: 'System' };
+  };
+
+  const currentUser = getCurrentUser();
+
   // ====== HOOK PASAR ======
   const {
     sections,
@@ -331,6 +352,19 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
               count: prevSections.length,
             });
             showToast(`${prevSections.length} section berhasil di-clone dari periode ${prevPeriod.year}-${prevPeriod.quarter}`, 'info');
+
+            // Log auto-clone ke audit log
+            await logCreate('PASAR', `Auto-clone ${prevSections.length} section Pasar dari ${prevPeriod.year}-TW${prevPeriod.quarter} ke ${viewYear}-TW${viewQuarter}`, {
+              userId: currentUser.id,
+              isSuccess: true,
+              metadata: {
+                year: viewYear,
+                quarter: viewQuarter,
+                clonedFrom: `${prevPeriod.year}-TW${prevPeriod.quarter}`,
+                sectionCount: prevSections.length,
+                sections: prevSections.map((s) => ({ no: s.no, parameter: s.parameter })),
+              },
+            });
           }
         }
       } catch (err) {
@@ -403,10 +437,22 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${newSection.parameter}" berhasil ditambahkan`, 'success');
+
+      // Log CREATE section
+      await logCreate('PASAR', `Tambah section baru: ${newSection.parameter} (No: ${newSection.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { sectionId: newSection.id, no: newSection.no, parameter: newSection.parameter, bobotSection: newSection.bobotSection, year: viewYear, quarter: viewQuarter },
+      });
     } catch (err) {
       console.error('Failed to add section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menambahkan section';
       showToast(errorMessage, 'error');
+      await logCreate('PASAR', `Gagal tambah section: ${PASAR_sectionForm.sectionLabel}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: errorMessage, year: viewYear, quarter: viewQuarter },
+      });
     }
   }
 
@@ -424,10 +470,22 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${sectionData.parameter}" berhasil diupdate`, 'success');
+
+      // Log UPDATE section
+      await logUpdate('PASAR', `Update section: ${sectionData.parameter} (No: ${sectionData.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { sectionId: PASAR_sectionForm.id, no: sectionData.no, parameter: sectionData.parameter, bobotSection: sectionData.bobotSection, year: viewYear, quarter: viewQuarter },
+      });
     } catch (err) {
       console.error('Failed to update section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal mengupdate section';
       showToast(errorMessage, 'error');
+      await logUpdate('PASAR', `Gagal update section: ${sectionData.parameter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: errorMessage, sectionId: PASAR_sectionForm.id, year: viewYear, quarter: viewQuarter },
+      });
     }
   }
 
@@ -463,10 +521,22 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${sectionToDelete.parameter}" berhasil dihapus`, 'success');
+
+      // Log DELETE section
+      await logDelete('PASAR', `Hapus section: ${sectionToDelete.parameter} (No: ${sectionToDelete.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { sectionId: id, no: sectionToDelete.no, parameter: sectionToDelete.parameter, bobotSection: sectionToDelete.bobotSection, year: viewYear, quarter: viewQuarter },
+      });
     } catch (err) {
       console.error('Failed to delete section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus section';
       showToast(errorMessage, 'error');
+      await logDelete('PASAR', `Gagal hapus section: ${sectionToDelete.parameter} (ID: ${id})`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: errorMessage, sectionId: id, year: viewYear, quarter: viewQuarter },
+      });
     }
   }
 
@@ -482,9 +552,21 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
 
       setInheritInfo(null);
       showToast('Clone berhasil dibatalkan', 'success');
+
+      // Log undo clone
+      await logDelete('PASAR', `Undo clone section Pasar ${viewYear}-TW${viewQuarter} (${clonedSections.length} section dihapus)`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { year: viewYear, quarter: viewQuarter, clonedFrom: inheritInfo?.from, deletedSectionCount: clonedSections.length, sections: clonedSections.map((s) => ({ id: s.id, parameter: s.parameter })) },
+      });
     } catch (err) {
       console.error('Error undoing clone:', err);
       showToast('Gagal membatalkan clone', 'error');
+      await logDelete('PASAR', `Gagal undo clone section Pasar ${viewYear}-TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: err.message, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
@@ -703,10 +785,22 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
       PASAR_resetForm();
       setShowPasarForm(false);
       showToast('Indikator berhasil ditambahkan!', 'success');
+
+      // Log CREATE indikator
+      await logCreate('PASAR', `Tambah indikator: ${backendData.indikator} (Section: ${section.parameter})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { sectionId: PASAR_sectionForm.id, sectionNo: PASAR_sectionForm.no, sectionLabel: PASAR_sectionForm.sectionLabel, subNo: backendData.subNo, indikator: backendData.indikator, bobotIndikator: backendData.bobotIndikator, mode: backendData.mode, year: viewYear, quarter: viewQuarter },
+      });
     } catch (err) {
       console.error('Failed to add indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menambahkan indikator';
       showToast(errorMessage, 'error');
+      await logCreate('PASAR', `Gagal tambah indikator: ${PASAR_form.indikator}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: errorMessage, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
@@ -812,10 +906,22 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
       PASAR_resetForm();
       setShowPasarForm(false);
       showToast('Indikator berhasil diupdate!', 'success');
+
+      // Log UPDATE indikator
+      await logUpdate('PASAR', `Update indikator: ${updateData.indikator} (ID: ${PASAR_editingRow.id})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { indicatorId: PASAR_editingRow.id, sectionId: PASAR_sectionForm.id, subNo: updateData.subNo, indikator: updateData.indikator, bobotIndikator: updateData.bobotIndikator, peringkat: updateData.peringkat, weighted: updateData.weighted, mode: updateData.mode, year: viewYear, quarter: viewQuarter },
+      });
     } catch (err) {
       console.error('Failed to update indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal mengupdate indikator';
       showToast(errorMessage, 'error');
+      await logUpdate('PASAR', `Gagal update indikator: ${PASAR_editingRow?.indikator} (ID: ${PASAR_editingRow?.id})`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: errorMessage, indicatorId: PASAR_editingRow?.id, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
@@ -830,19 +936,43 @@ export default function PasarInherent({ viewYear, viewQuarter, onViewYearChange,
       await deleteIndikator(row.id);
       if (PASAR_editingRow?.id === row.id) PASAR_resetForm();
       showToast(`Indikator "${row.indikator}" berhasil dihapus`, 'success');
+
+      // Log DELETE indikator
+      await logDelete('PASAR', `Hapus indikator: ${row.indikator} (Sub No: ${row.subNo})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { indicatorId: row.id, subNo: row.subNo, indikator: row.indikator, sectionLabel: row.sectionLabel, sectionNo: row.no, bobotIndikator: row.bobotIndikator, peringkat: row.peringkat, year: viewYear, quarter: viewQuarter },
+      });
     } catch (err) {
       console.error('Failed to delete indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus indikator';
       showToast(errorMessage, 'error');
+      await logDelete('PASAR', `Gagal hapus indikator: ${row.indikator} (ID: ${row.id})`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: errorMessage, indicatorId: row.id, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
-  const PASAR_exportExcel = () => {
+  const PASAR_exportExcel = async () => {
     try {
       exportPasarToExcel(PASAR_filtered, viewYear, viewQuarter);
       showToast(`Data Pasar tahun ${viewYear} triwulan ${viewQuarter} berhasil diexport`, 'success');
+
+      // Log EXPORT
+      await logExport('PASAR', `Export data Pasar tahun ${viewYear} TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { year: viewYear, quarter: viewQuarter, dataCount: PASAR_filtered.length, filename: `Pasar_${viewYear}_TW${viewQuarter}.xlsx` },
+      });
     } catch (err) {
       showToast('Gagal mengexport data', 'error');
+      await logExport('PASAR', `Gagal export data Pasar tahun ${viewYear} TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { error: err.message, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 

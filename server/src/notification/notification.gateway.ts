@@ -23,6 +23,7 @@ export class NotificationGateway
   // socket.id => userId
   private readonly clients = new Map<string, number>();
 
+
   handleConnection(client: Socket) {
     const token = client.handshake.auth?.token;
     if (!token) {

@@ -42,9 +42,13 @@ export class KpmrAspekOperasional {
   @JoinColumn({ name: 'kpmr_ojk_id' })
   kpmrOjk: KpmrOperasionalOjk;
 
-  @OneToMany(() => KpmrPertanyaanOperasional, (pertanyaan) => pertanyaan.aspek, {
-    cascade: true,
-  })
+  @OneToMany(
+    () => KpmrPertanyaanOperasional,
+    (pertanyaan) => pertanyaan.aspek,
+    {
+      cascade: true,
+    },
+  )
   pertanyaanList?: KpmrPertanyaanOperasional[];
 
   @CreateDateColumn({ name: 'created_at' })

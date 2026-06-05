@@ -1,4 +1,4 @@
-// services/api.service.ts
+// services/api-reputasi.service.ts
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:5530/api/v1';
@@ -44,7 +44,7 @@ api_reputasi.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api_reputasi;

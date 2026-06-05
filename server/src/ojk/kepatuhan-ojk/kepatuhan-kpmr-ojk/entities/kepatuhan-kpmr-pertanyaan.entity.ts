@@ -11,8 +11,8 @@ import {
 import { KpmrAspekKepatuhan } from './kepatuhan-kpmr-aspek.entity';
 
 @Entity('kpmr_pertanyaan_kepatuhan')
-@Index(['aspekId', 'nomor'], { unique: false })
-@Index(['aspekId', 'orderIndex'], { unique: false })
+@Index(['aspekId', 'nomor'])
+@Index(['aspekId', 'orderIndex'])
 @Index(['aspekId', 'createdAt'])
 export class KpmrPertanyaanKepatuhan {
   @PrimaryGeneratedColumn()

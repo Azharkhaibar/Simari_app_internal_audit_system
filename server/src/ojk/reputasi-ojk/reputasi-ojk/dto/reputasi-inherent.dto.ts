@@ -150,8 +150,8 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
-// DTO untuk membuat ReputasiOjk (header)
-export class CreateReputasiOjkDto {
+// DTO untuk membuat Reputasi (header)
+export class CreateReputasiDto {
   @IsInt()
   @Min(2000)
   year: number;
@@ -174,8 +174,8 @@ export class CreateReputasiOjkDto {
   version?: string;
 }
 
-// DTO untuk update ReputasiOjk
-export class UpdateReputasiOjkDto {
+// DTO untuk update Reputasi
+export class UpdateReputasiDto {
   @IsOptional()
   @IsInt()
   @Min(2000)

@@ -8,10 +8,9 @@ import {
   OneToMany,
 } from 'typeorm';
 import { RentabilitasParameter } from './rentabilitas-parameter.entity';
-
-@Entity('rentabilitas_produk_ojk')
+@Entity('rentabilitas_ojk')
 @Index(['year', 'quarter'], { unique: true })
-export class RentabilitasProdukOjk {
+export class Rentabilitas {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,10 +23,9 @@ export class RentabilitasProdukOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  // Relasi ke parameter
   @OneToMany(
     () => RentabilitasParameter,
-    (parameter) => parameter.rentabilitasProdukOjk,
+    (parameter) => parameter.rentabilitas,
     {
       cascade: true,
       eager: false,

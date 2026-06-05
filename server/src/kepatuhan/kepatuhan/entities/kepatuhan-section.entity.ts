@@ -8,12 +8,11 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
+import { Quarter, Kepatuhan } from './kepatuhan.entity';
 
-import { Kepatuhan, Quarter } from './kepatuhan.entity';
-
-@Entity('sections_kepatuhan')
+@Entity('sections_kepatuhan_holding')
 @Index(
-  'IDX_STRATEGIK_SECTION_PERIOD_UNIQUE',
+  'IDX_KEPATUHAN_SECTION_PERIOD_UNIQUE',
   ['year', 'quarter', 'no', 'parameter'],
   { unique: true },
 )
@@ -21,15 +20,14 @@ export class KepatuhanSection {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // TAMBAHKAN INI - Section HARUS punya periode
   @Column({ type: 'int' })
   year: number;
 
-  @Column({ type: 'enum', enum: Quarter })
+  @Column({ type: 'enum', enum: ['Q1', 'Q2', 'Q3', 'Q4'] })
   quarter: Quarter;
 
   @Column({ type: 'varchar', length: 50 })
-  no: string; // Contoh: "6.1"
+  no: string;
 
   @Column({
     name: 'bobot_section',
@@ -41,7 +39,7 @@ export class KepatuhanSection {
   bobotSection: number;
 
   @Column({ type: 'varchar', length: 500 })
-  parameter: string; // Nama section
+  parameter: string;
 
   @Column({ type: 'text', nullable: true })
   description: string | null;
@@ -73,7 +71,22 @@ export class KepatuhanSection {
   })
   isDeleted: boolean;
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  @Column({
+    name: 'created_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  createdBy: string | null;
+
+  @Column({
+    name: 'updated_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  updatedBy: string | null;
+
   @OneToMany(() => Kepatuhan, (kepatuhan) => kepatuhan.section)
   kepatuhanIndicators: Kepatuhan[];
 }

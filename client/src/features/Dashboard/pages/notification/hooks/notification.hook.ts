@@ -390,8 +390,9 @@ export const useNotifications = (): UseNotificationsReturn => {
   // ==================== WEBSOCKET SETUP ====================
 
   const setupWebSocket = useCallback(() => {
-    if (!user?.access_token) {
-      console.log('⏭️ No access token, skipping WebSocket setup');
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.log('⏭️ No access token found in localStorage, skipping WebSocket setup');
       return;
     }
 
@@ -401,39 +402,19 @@ export const useNotifications = (): UseNotificationsReturn => {
 
     try {
       // Connect WebSocket dengan token
-      notificationServiceRef.current.connectSocket(user.access_token);
+      notificationServiceRef.current.connectSocket(token);
 
       // Setup event listeners
       const handleNotification = (notification: any) => {
         console.log('🔔 WebSocket notification received:', notification);
-
-        if (!isMountedRef.current) return;
-
-        const converted = {
-          ...notification,
-          id: notification.id?.toString(),
-          userId: notification.userId?.toString() || userId?.toString(),
-          timestamp: new Date(notification.timestamp || Date.now()),
-        };
-
-        addToStore(converted);
-        console.log('✅ Added notification from WebSocket to store');
+        // Note: NotificationService already adds this to useNotificationStore
+        // so we don't need to do it again here.
       };
 
       const handleBroadcast = (notification: any) => {
         console.log('📢 WebSocket broadcast received:', notification);
-
-        if (!isMountedRef.current) return;
-
-        const converted = {
-          ...notification,
-          id: notification.id?.toString(),
-          userId: 'broadcast',
-          timestamp: new Date(notification.timestamp || Date.now()),
-        };
-
-        addToStore(converted);
-        console.log('✅ Added broadcast notification from WebSocket to store');
+        // Note: NotificationService already adds this to useNotificationStore
+        // so we don't need to do it again here.
       };
 
       const handleConnected = () => {
@@ -476,7 +457,7 @@ export const useNotifications = (): UseNotificationsReturn => {
         setIsWebSocketConnected(false);
       }
     }
-  }, [user?.access_token, userId, addToStore]);
+  }, [userId]);
 
   // ==================== EFFECTS ====================
 
@@ -503,7 +484,8 @@ export const useNotifications = (): UseNotificationsReturn => {
     syncWithBackend();
 
     // Setup WebSocket connection jika ada token
-    if (user?.access_token) {
+    const token = localStorage.getItem('access_token');
+    if (token) {
       setupWebSocket();
     }
 
@@ -537,7 +519,7 @@ export const useNotifications = (): UseNotificationsReturn => {
 
       syncInProgressRef.current = false;
     };
-  }, [userId, user?.access_token, syncWithBackend, setupWebSocket]);
+  }, [userId, syncWithBackend, setupWebSocket]);
 
   // ==================== ACTIONS ====================
 

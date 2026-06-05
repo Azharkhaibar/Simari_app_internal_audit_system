@@ -1,8 +1,10 @@
-// src/kepatuhan/kepatuhan.module.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Kepatuhan/kepatuhan.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { KepatuhanService } from './kepatuhan.service';
+// import { KepatuhanController } from './controllers/kepatuhan.controller';
+// import { KepatuhanService } from './services/kepatuhan.service';
 import { KepatuhanController } from './kepatuhan.controller';
+import { KepatuhanService } from './kepatuhan.service';
 import { Kepatuhan } from './entities/kepatuhan.entity';
 import { KepatuhanSection } from './entities/kepatuhan-section.entity';
 
@@ -10,6 +12,6 @@ import { KepatuhanSection } from './entities/kepatuhan-section.entity';
   imports: [TypeOrmModule.forFeature([Kepatuhan, KepatuhanSection])],
   controllers: [KepatuhanController],
   providers: [KepatuhanService],
-  exports: [KepatuhanService], // Tambahkan export jika diperlukan di module lain
+  exports: [KepatuhanService],
 })
 export class KepatuhanModule {}

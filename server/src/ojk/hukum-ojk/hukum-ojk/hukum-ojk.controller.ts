@@ -23,10 +23,10 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { HukumOjkService } from './hukum-ojk.service';
+import { HukumService } from './hukum-ojk.service';
 import {
-  CreateHukumInherentDto,
-  UpdateHukumInherentDto,
+  CreateHukumDto,
+  UpdateHukumDto,
   CreateParameterDto,
   UpdateParameterDto,
   CreateNilaiDto,
@@ -37,8 +37,8 @@ import {
   ImportExportDto,
 } from './dto/hukum-inherent.dto';
 
-@ApiTags('Hukum OJK')
-@Controller('hukum-ojk')
+@ApiTags('Hukum')
+@Controller('hukum')
 @UseInterceptors(ClassSerializerInterceptor)
 @UsePipes(
   new ValidationPipe({
@@ -47,13 +47,13 @@ import {
     forbidNonWhitelisted: true,
   }),
 )
-export class HukumOjkController {
-  constructor(private readonly inherentService: HukumOjkService) {}
+export class HukumController {
+  constructor(private readonly hukumService: HukumService) {}
 
   // === CRUD UTAMA ===
 
   @Get()
-  @ApiOperation({ summary: 'Get all Hukum OJK data or by year/quarter' })
+  @ApiOperation({ summary: 'Get all Hukum data or by year/quarter' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
@@ -61,30 +61,45 @@ export class HukumOjkController {
     @Query('year') year?: number,
     @Query('quarter') quarter?: number,
   ) {
+    // Jika ada parameter year & quarter, cari spesifik
     if (year && quarter) {
-      const result = await this.inherentService.findByYearQuarter(
-        year,
-        quarter,
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
+      const result = await this.hukumService.findByYearQuarter(
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      // ✅ JANGAN throw error. Return response 200 dengan data null.
+      return {
+        success: true,
+        data: result || null, // null jika tidak ditemukan
+        exists: !!result, // flag untuk frontend
+        message: result
+          ? `Data hukum ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data hukum belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.inherentService.getAll();
+
+    // Jika tidak ada parameter, return semua data
+    const allData = await this.hukumService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Get active Hukum OJK data' })
+  @ApiOperation({ summary: 'Get active Hukum data' })
   @ApiResponse({
     status: 200,
     description: 'Active data retrieved successfully',
   })
   @ApiResponse({ status: 404, description: 'No active data found' })
   async getActive() {
-    const result = await this.inherentService.findActive();
+    const result = await this.hukumService.findActive();
     if (!result) {
       throw new NotFoundException('Tidak ada data aktif ditemukan');
     }
@@ -92,24 +107,12 @@ export class HukumOjkController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Hukum OJK by ID' })
+  @ApiOperation({ summary: 'Get Hukum by ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    // PERBAIKAN: Cari langsung berdasarkan ID dengan method baru
-    const activeData = await this.inherentService.findActive();
-
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Gunakan year dan quarter dari active data
-    const result = await this.inherentService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const result = await this.hukumService.findById(id);
     if (!result) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
@@ -117,28 +120,28 @@ export class HukumOjkController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new Hukum OJK data' })
-  @ApiBody({ type: CreateHukumInherentDto })
+  @ApiOperation({ summary: 'Create new Hukum data' })
+  @ApiBody({ type: CreateHukumDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(@Body() createDto: CreateHukumInherentDto, @Request() req) {
+  async create(@Body() createDto: CreateHukumDto, @Request() req) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.create(createDto, userId);
+    return this.hukumService.create(createDto, userId);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update Hukum OJK data' })
+  @ApiOperation({ summary: 'Update Hukum data' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiBody({ type: UpdateHukumInherentDto })
+  @ApiBody({ type: UpdateHukumDto })
   @ApiResponse({ status: 200, description: 'Data updated successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateHukumInherentDto,
+    @Body() updateDto: UpdateHukumDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.update(id, updateDto, userId);
+    return this.hukumService.update(id, updateDto, userId);
   }
 
   @Put(':id/summary')
@@ -153,7 +156,7 @@ export class HukumOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateSummary(id, summaryDto, userId);
+    return this.hukumService.updateSummary(id, summaryDto, userId);
   }
 
   @Put(':id/status')
@@ -168,31 +171,30 @@ export class HukumOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateActiveStatus(id, isActive, userId);
+    return this.hukumService.updateActiveStatus(id, isActive, userId);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete Hukum OJK data' })
+  @ApiOperation({ summary: 'Delete Hukum data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data deleted successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.inherentService.remove(id);
+    return this.hukumService.remove(id);
   }
 
   // === OPERASI PARAMETER ===
 
   @Get(':id/parameters')
-  @ApiOperation({ summary: 'Get all parameters for specific Hukum OJK' })
+  @ApiOperation({ summary: 'Get all parameters for specific Hukum' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
     status: 200,
     description: 'Parameters retrieved successfully',
   })
-  async getParameters(@Param('id', ParseIntPipe) inherentId: number) {
-    // PERBAIKAN: Cari inherent berdasarkan ID, bukan year/quarter
-    const inherent = await this.getInherentByIdOrThrow(inherentId);
-    return inherent.parameters || [];
+  async getParameters(@Param('id', ParseIntPipe) hukumId: number) {
+    const hukum = await this.getHukumByIdOrThrow(hukumId);
+    return hukum.parameters || [];
   }
 
   @Post(':id/parameters')
@@ -202,13 +204,13 @@ export class HukumOjkController {
   @ApiResponse({ status: 201, description: 'Parameter added successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async addParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Body() createParamDto: CreateParameterDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.addParameter(
-      inherentId,
+    return this.hukumService.addParameter(
+      hukumId,
       createParamDto,
       userId,
     );
@@ -222,14 +224,14 @@ export class HukumOjkController {
   @ApiResponse({ status: 200, description: 'Parameter updated successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async updateParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Body() updateParamDto: UpdateParameterDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateParameter(
-      inherentId,
+    return this.hukumService.updateParameter(
+      hukumId,
       parameterId,
       updateParamDto,
       userId,
@@ -245,10 +247,10 @@ export class HukumOjkController {
     description: 'Parameters reordered successfully',
   })
   async reorderParameters(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Body() reorderDto: ReorderParametersDto,
   ) {
-    return this.inherentService.reorderParameters(inherentId, reorderDto);
+    return this.hukumService.reorderParameters(hukumId, reorderDto);
   }
 
   @Post(':id/parameters/:parameterId/copy')
@@ -258,12 +260,16 @@ export class HukumOjkController {
   @ApiResponse({ status: 201, description: 'Parameter copied successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async copyParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.copyParameter(inherentId, parameterId, userId);
+    return this.hukumService.copyParameter(
+      hukumId,
+      parameterId,
+      userId,
+    );
   }
 
   @Delete(':id/parameters/:parameterId')
@@ -273,13 +279,13 @@ export class HukumOjkController {
   @ApiResponse({ status: 200, description: 'Parameter deleted successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async removeParameter(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.removeParameter(
-      inherentId,
+    return this.hukumService.removeParameter(
+      hukumId,
       parameterId,
       userId,
     );
@@ -293,13 +299,12 @@ export class HukumOjkController {
   @ApiParam({ name: 'parameterId', type: Number })
   @ApiResponse({ status: 200, description: 'Nilai retrieved successfully' })
   async getNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
   ) {
-    // PERBAIKAN: Cari inherent berdasarkan ID
-    const inherent = await this.getInherentByIdOrThrow(inherentId);
+    const hukum = await this.getHukumByIdOrThrow(hukumId);
 
-    const parameter = inherent.parameters?.find((p) => p.id === parameterId);
+    const parameter = hukum.parameters?.find((p) => p.id === parameterId);
     if (!parameter) {
       throw new NotFoundException(
         `Parameter dengan ID ${parameterId} tidak ditemukan`,
@@ -316,14 +321,14 @@ export class HukumOjkController {
   @ApiResponse({ status: 201, description: 'Nilai added successfully' })
   @ApiResponse({ status: 404, description: 'Parameter not found' })
   async addNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Body() createNilaiDto: CreateNilaiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.addNilai(
-      inherentId,
+    return this.hukumService.addNilai(
+      hukumId,
       parameterId,
       createNilaiDto,
       userId,
@@ -339,15 +344,15 @@ export class HukumOjkController {
   @ApiResponse({ status: 200, description: 'Nilai updated successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async updateNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Body() updateNilaiDto: UpdateNilaiDto,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.updateNilai(
-      inherentId,
+    return this.hukumService.updateNilai(
+      hukumId,
       parameterId,
       nilaiId,
       updateNilaiDto,
@@ -362,11 +367,11 @@ export class HukumOjkController {
   @ApiBody({ type: ReorderNilaiDto })
   @ApiResponse({ status: 200, description: 'Nilai reordered successfully' })
   async reorderNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Body() reorderDto: ReorderNilaiDto,
   ) {
-    return this.inherentService.reorderNilai(parameterId, reorderDto);
+    return this.hukumService.reorderNilai(parameterId, reorderDto);
   }
 
   @Post(':id/parameters/:parameterId/nilai/:nilaiId/copy')
@@ -377,14 +382,14 @@ export class HukumOjkController {
   @ApiResponse({ status: 201, description: 'Nilai copied successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async copyNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.copyNilai(
-      inherentId,
+    return this.hukumService.copyNilai(
+      hukumId,
       parameterId,
       nilaiId,
       userId,
@@ -399,14 +404,14 @@ export class HukumOjkController {
   @ApiResponse({ status: 200, description: 'Nilai deleted successfully' })
   @ApiResponse({ status: 404, description: 'Nilai not found' })
   async removeNilai(
-    @Param('id', ParseIntPipe) inherentId: number,
+    @Param('id', ParseIntPipe) hukumId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
     @Param('nilaiId', ParseIntPipe) nilaiId: number,
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.removeNilai(
-      inherentId,
+    return this.hukumService.removeNilai(
+      hukumId,
       parameterId,
       nilaiId,
       userId,
@@ -420,8 +425,8 @@ export class HukumOjkController {
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Export successful' })
   @ApiResponse({ status: 404, description: 'Data not found' })
-  async exportToExcel(@Param('id', ParseIntPipe) inherentId: number) {
-    return this.inherentService.exportToExcel(inherentId);
+  async exportToExcel(@Param('id', ParseIntPipe) hukumId: number) {
+    return this.hukumService.exportToExcel(hukumId);
   }
 
   @Post('import')
@@ -431,7 +436,7 @@ export class HukumOjkController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   async importFromExcel(@Body() importData: ImportExportDto, @Request() req) {
     const userId = req.user?.id || 'system';
-    return this.inherentService.importFromExcel(importData, userId);
+    return this.hukumService.importFromExcel(importData, userId);
   }
 
   // === REFERENCE DATA ===
@@ -444,7 +449,19 @@ export class HukumOjkController {
     description: 'References retrieved successfully',
   })
   async getReferences(@Query('type') type?: string) {
-    return this.inherentService.getReferences(type);
+    return this.hukumService.getReferences(type);
+  }
+
+  // === VALIDATION ENDPOINTS ===
+
+  @Get(':id/validate')
+  @ApiOperation({ summary: 'Validate model terstruktur' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Validation completed' })
+  async validateModelTerstruktur(
+    @Param('id', ParseIntPipe) hukumId: number,
+  ) {
+    return this.hukumService.validateModelTerstruktur(hukumId);
   }
 
   // === UTILITY ENDPOINTS ===
@@ -458,58 +475,24 @@ export class HukumOjkController {
     @Param('year', ParseIntPipe) year: number,
     @Param('quarter', ParseIntPipe) quarter: number,
   ) {
-    const exists = await this.inherentService.findByYearQuarter(year, quarter);
+    const exists = await this.hukumService.findByYearQuarter(
+      year,
+      quarter,
+    );
     return { exists: !!exists, data: exists };
   }
 
   // === HELPER METHODS ===
 
-  /**
-   * Helper method untuk mendapatkan inherent by ID
-   * Karena entity relasional, kita perlu mencari berdasarkan year/quarter dari inherent aktif
-   */
-  private async getInherentByIdOrThrow(inherentId: number) {
-    // Cari berdasarkan ID langsung (jika service punya method findById)
-    // Atau gunakan active data
+  private async getHukumByIdOrThrow(hukumId: number) {
+    const hukum = await this.hukumService.findById(hukumId);
 
-    const activeData = await this.inherentService.findActive();
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Cari data berdasarkan year/quarter dari active data
-    const inherent = await this.inherentService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
-    if (!inherent) {
+    if (!hukum) {
       throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
+        `Data dengan ID ${hukumId} tidak ditemukan`,
       );
     }
 
-    // Validasi bahwa ID yang diminta sesuai dengan ID yang ditemukan
-    if (inherent.id !== inherentId) {
-      throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
-      );
-    }
-
-    return inherent;
-  }
-
-  /**
-   * Opsional: Method alternatif jika service punya findById
-   */
-  private async getInherentByIdDirect(inherentId: number) {
-    // Jika service memiliki method findById, gunakan ini
-    // Tapi service kita saat ini tidak punya, jadi perlu ditambahkan
-
-    // Contoh jika service punya method findById:
-    // return await this.inherentService.findById(inherentId);
-
-    // Untuk sekarang, kita gunakan workaround dengan active data
-    return this.getInherentByIdOrThrow(inherentId);
+    return hukum;
   }
 }

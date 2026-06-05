@@ -10,7 +10,7 @@ import { Plus, Trash2, Copy, TriangleAlert, X, FileWarning, ArrowBigLeftDash, Ar
 import computeDerived from '../../../../utils/compute/compute-derived';
 import { useDropdownPortal } from '../components/usedropdownportal';
 import PopUpDelete from '../../../../components/popup-delete';
-import { useHukumIntegration } from '../hook/inherent/hukum.hook';
+import { useHukumProdukIntegration } from '../hook/inherent/hukum.hook';
 
 const log = {
   info: (message, data = null) => {
@@ -71,7 +71,7 @@ export default function HukumInherentWrapper() {
     formatNilaiJudul,
     formatBobot,
     formatKategori,
-  } = useHukumIntegration(year, quarter);
+  } = useHukumProdukIntegration(year, quarter);
 
   useEffect(() => {
     log.debug('State changed', {
@@ -1272,7 +1272,7 @@ function ParameterPanel({ rows, setRows, active, backendHandlers, isLoading: glo
   const handleOpenNilaiDeleteDialog = useCallback(
     (nilai, nilaiIndex) => {
       setItemToDelete({
-        name: nilai.judul?.text || 'nilai ini',
+        name: nilai.judul?.text || 'indikator ini',
         nomor: nilai.nomor || '-',
         judul: nilai.judul?.text || 'Tidak ada judul',
       });
@@ -1623,12 +1623,12 @@ function ParameterPanel({ rows, setRows, active, backendHandlers, isLoading: glo
       <PopUpDelete
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        title={`Hapus ${deleteContext.type === 'parameter' ? 'Parameter' : 'Nilai'}`}
-        description={`Apakah Anda yakin ingin menghapus ${deleteContext.type === 'parameter' ? 'parameter' : 'nilai'} ini? Tindakan ini tidak dapat dibatalkan.`}
+        title={`Hapus ${deleteContext.type === 'parameter' ? 'Parameter' : 'Indikator'}`}
+        description={`Apakah Anda yakin ingin menghapus ${deleteContext.type === 'parameter' ? 'parameter' : 'indikator'} ini? Tindakan ini tidak dapat dibatalkan.`}
         itemName={itemToDelete?.name || ''}
         itemNomor={itemToDelete?.nomor || ''}
         itemJudul={itemToDelete?.judul || ''}
-        itemType={deleteContext.type === 'parameter' ? 'parameter' : 'nilai'}
+        itemType={deleteContext.type === 'parameter' ? 'parameter' : 'indikator'}
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           setDeleteDialogOpen(false);
@@ -1771,7 +1771,7 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
   }, [hasNilai, activeNilaiIndex, setActiveNilaiIndex]);
 
   const formatNilaiLabel = useCallback((nilai, index) => {
-    if (!nilai) return 'Pilih atau Tambah Nilai Baru';
+    if (!nilai) return 'Pilih atau Tambah Indikator Baru';
 
     const nomor = nilai.nomor || index + 1;
     const judul = nilai.judul?.text || 'Tanpa Judul';
@@ -1855,13 +1855,13 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
 
     // Validasi
     if (!draftNilai.judul?.text?.trim()) {
-      alert('Judul nilai tidak boleh kosong!');
+      alert('Judul indikator tidak boleh kosong!');
       return;
     }
 
     const bobotNum = Number(draftNilai.bobot);
     if (isNaN(bobotNum) || bobotNum < 0 || bobotNum > 100) {
-      alert('Bobot nilai harus antara 0 dan 100!');
+      alert('Bobot indikator harus antara 0 dan 100!');
       return;
     }
 
@@ -1962,13 +1962,13 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
 
     // Validasi
     if (!draftNilai.judul?.text?.trim()) {
-      alert('Judul nilai tidak boleh kosong!');
+      alert('Judul indikator tidak boleh kosong!');
       return;
     }
 
     const bobotNum = Number(draftNilai.bobot);
     if (isNaN(bobotNum) || bobotNum < 0 || bobotNum > 100) {
-      alert('Bobot nilai harus antara 0 dan 100!');
+      alert('Bobot indikator harus antara 0 dan 100!');
       return;
     }
 
@@ -2071,7 +2071,7 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
       id: `copy-nilai-${Date.now()}`,
       judul: {
         ...currentNilai.judul,
-        text: `${currentNilai.judul?.text || 'Nilai'} (Copy)`,
+        text: `${currentNilai.judul?.text || 'Indikator'} (Copy)`,
       },
     };
 
@@ -2115,7 +2115,7 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
       setOpenNilaiList(false);
     } else {
       // Jika dalam edit mode, tanya konfirmasi
-      const confirmed = window.confirm('Anda sedang dalam mode edit. Pilih nilai lain akan membatalkan perubahan. Lanjutkan?');
+      const confirmed = window.confirm('Anda sedang dalam mode edit. Pilih indikator lain akan membatalkan perubahan. Lanjutkan?');
 
       if (confirmed) {
         setEditModeNilai(false);
@@ -2200,7 +2200,7 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
 
       {/* Header panel */}
       <div className="w-full bg-gradient-to-r from-blue-700 to-sky-600 text-white px-4 pt-4 pb-3 border-t border-slate-700 flex items-center justify-between gap-4 rounded-t-lg">
-        <div className="text-lg font-bold">Nilai Form (Tersinkron dengan Database)</div>
+        <div className="text-lg font-bold">Indikator Form (Tersinkron dengan Database)</div>
 
         {isLocked && (
           <div className="text-xs bg-amber-600 text-white px-2 py-1 rounded inline-flex items-center">
@@ -2233,7 +2233,7 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
 
           {/* Tombol Edit - hanya muncul jika ada nilai aktif dan tidak dalam edit mode */}
           {safeActiveIndex >= 0 && hasNilai && !editModeNilai && !isLocked && (
-            <Button size="icon" onClick={handleEditNilai} className="bg-blue-600 hover:bg-blue-700" disabled={loading || isSaving} title="Edit Nilai">
+            <Button size="icon" onClick={handleEditNilai} className="bg-blue-600 hover:bg-blue-700" disabled={loading || isSaving} title="Edit Indikator">
               <Edit className="w-4 h-4" />
             </Button>
           )}
@@ -2252,17 +2252,17 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
                 size="icon"
                 className="h-8 w-8 rounded-full bg-emerald-600 hover:bg-emerald-700"
                 onClick={editModeNilai ? handleUpdateNilai : handleAddNilai}
-                title={editModeNilai ? 'Update Nilai' : safeActiveIndex === -1 ? 'Tambah Nilai' : 'Tambah Nilai Baru'}
+                title={editModeNilai ? 'Update Indikator' : safeActiveIndex === -1 ? 'Tambah Indikator' : 'Tambah Indikator Baru'}
                 disabled={loading || isSaving}
               >
                 {editModeNilai ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               </Button>
 
-              <Button size="icon" className="h-8 w-8 rounded-full bg-amber-600 hover:bg-amber-700" onClick={handleCopyNilai} disabled={safeActiveIndex === -1 || loading || isSaving} title="Salin Nilai">
+              <Button size="icon" className="h-8 w-8 rounded-full bg-amber-600 hover:bg-amber-700" onClick={handleCopyNilai} disabled={safeActiveIndex === -1 || loading || isSaving} title="Salin Indikator">
                 <Copy className="w-4 h-4" />
               </Button>
 
-              <Button size="icon" className="h-8 w-8 rounded-full bg-rose-600 hover:bg-rose-700" onClick={handleDeleteNilai} disabled={safeActiveIndex === -1 || loading || isSaving} title="Hapus Nilai">
+              <Button size="icon" className="h-8 w-8 rounded-full bg-rose-600 hover:bg-rose-700" onClick={handleDeleteNilai} disabled={safeActiveIndex === -1 || loading || isSaving} title="Hapus Indikator">
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
@@ -2270,21 +2270,21 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
         </div>
       </div>
 
-      {/* Form input nilai */}
+      {/* Form input indikator */}
       {showForm && (
         <div className="w-full bg-gradient-to-r from-blue-700 to-sky-600 text-white px-4 pb-4 border border-slate-700 space-y-4 rounded-b-lg">
           <div className="w-full bg-slate-200 rounded-lg p-0.5 mt-2" />
 
           <div className="space-y-2">
             <div className="flex flex-col">
-              <label className="font-semibold text-sm ml-1 mb-1 text-slate-200">Pilih Nilai</label>
+              <label className="font-semibold text-sm ml-1 mb-1 text-slate-200">Pilih Indikator</label>
               <button
                 ref={dropdownNilaiBtnRef}
                 onClick={() => setOpenNilaiList((v) => !v)}
                 className="w-full bg-white text-slate-800 text-sm rounded px-3 py-2 flex justify-between items-center border border-slate-300 hover:bg-slate-50"
                 disabled={loading || isSaving}
               >
-                <span className="truncate">{safeActiveIndex >= 0 && hasNilai ? formatNilaiLabel(currentNilai, safeActiveIndex) : 'Pilih atau Tambah Nilai Baru'}</span>
+                <span className="truncate">{safeActiveIndex >= 0 && hasNilai ? formatNilaiLabel(currentNilai, safeActiveIndex) : 'Pilih atau Tambah Indikator Baru'}</span>
                 <span>▾</span>
               </button>
             </div>
@@ -2334,6 +2334,45 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
               )}
 
               {/* PERBAIKAN: Selalu gunakan draftNilai untuk input */}
+              <div className="grid grid-cols-12 gap-4 text-slate-800">
+                <div className="col-span-2 flex flex-col gap-1">
+                  <label className="font-semibold text-sm text-slate-200 ml-1">Nomor</label>
+                  <Input
+                    className="bg-white text-slate-800 border-slate-300 text-sm"
+                    value={draftNilai.nomor ?? ''}
+                    onChange={(e) => handleChangeNilaiField('nomor', e.target.value)}
+                    disabled={isInputDisabled}
+                    placeholder="1.1."
+                  />
+                </div>
+
+                <div className="col-span-2 flex flex-col gap-1">
+                  <label className="font-semibold text-sm text-slate-200 ml-1">Bobot</label>
+                  <Input
+                    className="bg-white text-slate-800 border-slate-300 text-sm"
+                    value={draftNilai.bobot ?? ''}
+                    onChange={(e) => handleChangeNilaiField('bobot', e.target.value)}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    disabled={isInputDisabled}
+                    placeholder="max 100%"
+                  />
+                </div>
+
+                <div className="col-span-8 flex flex-col gap-1">
+                  <label className="font-semibold text-sm text-slate-200 ml-1">% dalam Portofolio</label>
+                  <Input
+                    className="bg-white text-slate-800 border-slate-300 text-sm"
+                    value={draftNilai.portofolio ?? ''}
+                    onChange={(e) => handleChangeNilaiField('portofolio', e.target.value)}
+                    disabled={isInputDisabled}
+                    placeholder="masukan % dalam portofolio"
+                  />
+                </div>
+              </div>
+
               <NilaiJudulInput
                 judul={draftNilai.judul}
                 onChange={handleChangeJudul}
@@ -2346,38 +2385,7 @@ function NilaiPanel({ param, nilaiList = [], activeNilaiIndex, setActiveNilaiInd
                 isLocked={isLocked}
               />
 
-              <div className="w-full flex gap-2 text-slate-800">
-                <div className="w-[10%]">
-                  <label className="font-semibold text-sm text-slate-200">nomor</label>
-                  <Input className="h-8 bg-white text-sm border-slate-300" value={draftNilai.nomor ?? ''} onChange={(e) => handleChangeNilaiField('nomor', e.target.value)} disabled={isInputDisabled} placeholder="1.1." />
-                </div>
-
-                <div className="w-[12%]">
-                  <label className="font-semibold text-sm text-slate-200">Bobot</label>
-                  <Input
-                    className="h-8 bg-white text-sm border-slate-300"
-                    value={draftNilai.bobot ?? ''}
-                    onChange={(e) => handleChangeNilaiField('bobot', e.target.value)}
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    disabled={isInputDisabled}
-                    placeholder="max 100%"
-                  />
-                </div>
-
-                <div className="w-[78%]">
-                  <label className="font-semibold text-sm text-slate-200">% dalam Portofolio</label>
-                  <Input
-                    className="h-8 bg-white text-sm border-slate-300"
-                    value={draftNilai.portofolio ?? ''}
-                    onChange={(e) => handleChangeNilaiField('portofolio', e.target.value)}
-                    disabled={isInputDisabled}
-                    placeholder="masukan % dalam portofolio"
-                  />
-                </div>
-              </div>
+              
 
               <div className="mt-3">
                 <div className="text-sm font-semibold py-2 text-slate-200">Risk Indicator</div>
@@ -2535,7 +2543,7 @@ function NilaiJudulInput({ judul, onChange, onTypeChange, loading = false, editM
       </div>
 
       <div className="space-y-1">
-        <label className="font-semibold text-sm text-slate-200">Judul Nilai</label>
+        <label className="font-semibold text-sm text-slate-200">Judul Indikator</label>
         <Input className="text-slate-800 border-slate-300 bg-white" value={localJudul.text || ''} onChange={(e) => updateField('text', e.target.value)} disabled={loading || !editMode || isLocked} placeholder="masukan judul" />
       </div>
 

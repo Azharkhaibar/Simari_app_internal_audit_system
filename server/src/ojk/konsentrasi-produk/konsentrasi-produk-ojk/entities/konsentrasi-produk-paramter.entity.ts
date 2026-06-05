@@ -12,8 +12,10 @@ import {
 import { KonsentrasiProdukOjk } from './konsentrasi-produk-ojk.entity';
 import { KonsentrasiNilai } from './konsentrasi-produk-nilai.entity';
 
-@Entity('konsentrasi_parameters')
-@Index(['konsentrasiProdukOjkId', 'nomor'], { unique: false })
+@Entity('konsentrasi_parameters_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['konsentrasiId', 'nomor'])
+@Index(['konsentrasiId', 'orderIndex'])
 export class KonsentrasiParameter {
   @PrimaryGeneratedColumn()
   id: number;
@@ -35,17 +37,15 @@ export class KonsentrasiParameter {
     underlying?: string[];
   };
 
-  // Foreign key ke KonsentrasiProdukOjk
-  @Column({ name: 'konsentrasi_produk_ojk_id' })
-  konsentrasiProdukOjkId: number;
+  @Column({ name: 'konsentrasi_ojk_id' })
+  konsentrasiId: number;
 
-  @ManyToOne(() => KonsentrasiProdukOjk, (kons) => kons.parameters, {
+  @ManyToOne(() => KonsentrasiProdukOjk, (konsentrasi) => konsentrasi.parameters, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'konsentrasi_produk_ojk_id' })
-  konsentrasiProdukOjk: KonsentrasiProdukOjk;
+  @JoinColumn({ name: 'konsentrasi_ojk_id' })
+  konsentrasi: KonsentrasiProdukOjk;
 
-  // Relasi ke nilai
   @OneToMany(() => KonsentrasiNilai, (nilai) => nilai.parameter, {
     cascade: true,
   })

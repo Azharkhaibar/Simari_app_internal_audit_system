@@ -1,4 +1,3 @@
-// src/ojk/likuiditas-produk/likuiditas-produk-ojk/entities/likuiditas-parameter.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,11 +9,13 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { LikuiditasProdukOjk } from './likuiditas-produk-ojk.entity';
-import { LikuiditasNilai } from './likuditas-nilai.entity';
+import { Likuiditas } from './likuiditas-ojk.entity';
+import { LikuiditasNilai } from './likuiditas-nilai.entity';
 
-@Entity('likuiditas_parameters')
-@Index(['likuiditasProdukOjkId', 'nomor'], { unique: false })
+@Entity('likuiditas_parameters_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['likuiditasId', 'nomor'])
+@Index(['likuiditasId', 'orderIndex'])
 export class LikuiditasParameter {
   @PrimaryGeneratedColumn()
   id: number;
@@ -36,17 +37,15 @@ export class LikuiditasParameter {
     underlying?: string[];
   };
 
-  // Foreign key ke LikuiditasProdukOjk
-  @Column({ name: 'likuiditas_produk_ojk_id' })
-  likuiditasProdukOjkId: number;
+  @Column({ name: 'likuiditas_ojk_id' })
+  likuiditasId: number;
 
-  @ManyToOne(() => LikuiditasProdukOjk, (likuiditas) => likuiditas.parameters, {
+  @ManyToOne(() => Likuiditas, (likuiditas) => likuiditas.parameters, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'likuiditas_produk_ojk_id' })
-  likuiditasProdukOjk: LikuiditasProdukOjk;
+  @JoinColumn({ name: 'likuiditas_ojk_id' })
+  likuiditas: Likuiditas;
 
-  // Relasi ke nilai
   @OneToMany(() => LikuiditasNilai, (nilai) => nilai.parameter, {
     cascade: true,
   })

@@ -1,4 +1,6 @@
-import api_pasar_produk from '../pasar-produk-api.service';
+import api_pasar_produk from "../pasar-produk-api.service";
+
+// services/kpmr/pasar-produk-kpmr.service.ts
 
 // ========== DTO Interfaces ==========
 export interface KpmrSkorDto {
@@ -17,7 +19,7 @@ export interface KpmrIndicatorDto {
 }
 
 // ========== CREATE DTOs ==========
-export interface CreateKpmrPasarOjkDto {
+export interface CreateKpmrPasarProdukOjkDto {
   year: number;
   quarter: number;
   isActive?: boolean;
@@ -25,20 +27,20 @@ export interface CreateKpmrPasarOjkDto {
   version?: string;
   notes?: string;
   summary?: any;
-  aspekList?: CreateKpmrAspekPasarDto[];
+  aspekList?: CreateKpmrAspekPasarProdukDto[];
 }
 
-export interface CreateKpmrAspekPasarDto {
+export interface CreateKpmrAspekPasarProdukDto {
   nomor?: string;
   judul: string;
   bobot: number;
   deskripsi?: string;
   kpmrOjkId?: number;
   orderIndex?: number;
-  pertanyaanList?: CreateKpmrPertanyaanPasarDto[];
+  pertanyaanList?: CreateKpmrPertanyaanPasarProdukDto[];
 }
 
-export interface CreateKpmrPertanyaanPasarDto {
+export interface CreateKpmrPertanyaanPasarProdukDto {
   nomor?: string;
   pertanyaan: string;
   skor?: KpmrSkorDto;
@@ -50,15 +52,17 @@ export interface CreateKpmrPertanyaanPasarDto {
 }
 
 // ========== UPDATE DTOs ==========
-export interface UpdateKpmrAspekPasarDto {
+export interface UpdateKpmrAspekPasarProdukDto {
   nomor?: string;
   judul?: string;
   bobot?: number;
   deskripsi?: string;
   orderIndex?: number;
+  updatedBy?: string;
+  notes?: string;
 }
 
-export interface UpdateKpmrPertanyaanPasarDto {
+export interface UpdateKpmrPertanyaanPasarProdukDto {
   nomor?: string;
   pertanyaan?: string;
   skor?: KpmrSkorDto;
@@ -125,8 +129,8 @@ export interface FrontendPertanyaanResponse {
 }
 
 // ========== SERVICE CLASS ==========
-class KpmrPasarApiService {
-  private readonly BASE_PATH = '/kpmr-pasar';
+class KpmrPasarProdukApiService {
+  private readonly BASE_PATH = '/kpmr-pasar-produk';
   private readonly VALID_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'] as const;
   private readonly MIN_YEAR = 2000;
   private readonly MAX_YEAR = 2100;
@@ -197,7 +201,7 @@ class KpmrPasarApiService {
   }
 
   private handleApiError(error: any, defaultMessage: string): never {
-    console.error(`❌ [KPMR Service] Error:`, error);
+    console.error(`❌ [KPMR Pasar Produk Service] Error:`, error);
     if (error.code === 'ERR_NETWORK') {
       throw new Error('Tidak dapat terhubung ke server.');
     }
@@ -285,7 +289,7 @@ class KpmrPasarApiService {
 
   // ========== ASPEK OPERATIONS ==========
 
-  async createAspek(kpmrId: number | string, data: CreateKpmrAspekPasarDto): Promise<FrontendAspekResponse> {
+  async createAspek(kpmrId: number | string, data: CreateKpmrAspekPasarProdukDto): Promise<FrontendAspekResponse> {
     try {
       const cleanKpmrId = this.cleanId(kpmrId);
       const payload = {
@@ -304,7 +308,7 @@ class KpmrPasarApiService {
     }
   }
 
-  async updateAspek(id: number | string, data: UpdateKpmrAspekPasarDto): Promise<FrontendAspekResponse> {
+  async updateAspek(id: number | string, data: UpdateKpmrAspekPasarProdukDto): Promise<FrontendAspekResponse> {
     try {
       const cleanId = this.cleanId(id);
       const response = await api_pasar_produk.patch(`${this.BASE_PATH}/aspek/${cleanId}`, data);
@@ -325,12 +329,11 @@ class KpmrPasarApiService {
 
   // ========== PERTANYAAN OPERATIONS ==========
 
-  async createPertanyaan(aspekId: number | string, data: CreateKpmrPertanyaanPasarDto): Promise<FrontendPertanyaanResponse> {
+  async createPertanyaan(aspekId: number | string, data: CreateKpmrPertanyaanPasarProdukDto): Promise<FrontendPertanyaanResponse> {
     try {
       const cleanAspekId = this.cleanId(aspekId);
 
-      // ✅ JANGAN VALIDASI SKOR DI SINI
-      const payload: CreateKpmrPertanyaanPasarDto = {
+      const payload: CreateKpmrPertanyaanPasarProdukDto = {
         nomor: data.nomor || '',
         pertanyaan: data.pertanyaan.trim(),
         skor: data.skor || {},
@@ -366,21 +369,19 @@ class KpmrPasarApiService {
     }
   }
 
-  async updatePertanyaan(id: number | string, data: UpdateKpmrPertanyaanPasarDto): Promise<FrontendPertanyaanResponse> {
+  async updatePertanyaan(id: number | string, data: UpdateKpmrPertanyaanPasarProdukDto): Promise<FrontendPertanyaanResponse> {
     try {
       const cleanId = this.cleanId(id);
 
       // Buat payload dengan struktur yang benar
       const payload: any = {};
 
-      // Hanya kirim field yang ada
       if (data.nomor !== undefined) payload.nomor = data.nomor;
       if (data.pertanyaan !== undefined) payload.pertanyaan = data.pertanyaan;
       if (data.evidence !== undefined) payload.evidence = data.evidence;
       if (data.catatan !== undefined) payload.catatan = data.catatan;
       if (data.orderIndex !== undefined) payload.orderIndex = data.orderIndex;
 
-      // Format skor dengan benar (konversi ke number, tanpa validasi)
       if (data.skor) {
         payload.skor = {};
         ['Q1', 'Q2', 'Q3', 'Q4'].forEach((quarter) => {
@@ -391,12 +392,11 @@ class KpmrPasarApiService {
               payload.skor[quarter] = numSkor;
             }
           } else {
-            payload.skor[quarter] = null; // atau undefined sesuai kebutuhan backend
+            payload.skor[quarter] = null;
           }
         });
       }
 
-      // Format indicator
       if (data.indicator) {
         payload.indicator = {
           strong: data.indicator.strong || '',
@@ -407,7 +407,7 @@ class KpmrPasarApiService {
         };
       }
 
-      console.log('[KPMR Service] Update pertanyaan payload:', JSON.stringify(payload, null, 2));
+      console.log('[KPMR Pasar Produk Service] Update pertanyaan payload:', JSON.stringify(payload, null, 2));
 
       const response = await api_pasar_produk.patch(`${this.BASE_PATH}/pertanyaan/${cleanId}`, payload);
       return response.data;
@@ -425,28 +425,52 @@ class KpmrPasarApiService {
     }
   }
 
-  async createKpmr(data: CreateKpmrPasarOjkDto): Promise<FrontendKpmrResponse> {
+  // ========== CREATE KPMR - YANG DIPERBAIKI ==========
+  async createKpmr(data: CreateKpmrPasarProdukOjkDto): Promise<FrontendKpmrResponse> {
     try {
-      console.log(`🆕 [KPMR Service] Creating KPMR for year ${data.year} Q${data.quarter}`);
+      console.log(`🆕 [KPMR Pasar Produk Service] Creating KPMR:`, data);
 
-      // Validasi
+      // ✅ VALIDASI TIPE DATA
+      console.log(`🔍 Year type: ${typeof data.year}, value: ${data.year}`);
+      console.log(`🔍 Quarter type: ${typeof data.quarter}, value: ${data.quarter}`);
+
+      // ✅ Validasi
       if (!data.year || data.year < this.MIN_YEAR || data.year > this.MAX_YEAR) {
-        throw new Error('Tahun tidak valid');
-      }
-      if (!data.quarter || data.quarter < 1 || data.quarter > 4) {
-        throw new Error('Quarter tidak valid');
+        throw new Error(`Tahun tidak valid: ${data.year}`);
       }
 
-      const formattedPayload = {
+      if (!data.quarter || data.quarter < 1 || data.quarter > 4) {
+        throw new Error(`Quarter tidak valid: ${data.quarter}`);
+      }
+
+      // ❌ JANGAN KONVERSI QUARTER! Kirim sebagai number
+      const payload = {
         ...data,
-        // Jika quarter masih number, konversi ke Q1-Q4
-        quarter: typeof data.quarter === 'number' ? `Q${data.quarter}` : data.quarter,
+        // HAPUS baris ini: quarter: quarterMap[data.quarter] || `Q${data.quarter}`,
       };
 
-      const response = await api_pasar_produk.post(this.BASE_PATH, formattedPayload);
+      console.log('📦 [KPMR Pasar Produk Service] Sending payload:', payload);
+
+      const response = await api_pasar_produk.post(this.BASE_PATH, payload);
+
+      if (!response || !response.data) {
+        throw new Error('Response dari server tidak valid');
+      }
+
+      console.log('✅ [KPMR Pasar Produk Service] Response:', response.data);
       return response.data;
     } catch (error: any) {
-      return this.handleApiError(error, 'Gagal membuat KPMR');
+      console.error('❌ [KPMR Pasar Produk Service] Create error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+
+      // Lempar error dengan pesan yang lebih jelas
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw error;
     }
   }
 
@@ -467,5 +491,5 @@ class KpmrPasarApiService {
   }
 }
 
-export const kpmrPasarApiService = new KpmrPasarApiService();
-export default kpmrPasarApiService;
+export const kpmrPasarProdukApiService = new KpmrPasarProdukApiService();
+export default kpmrPasarProdukApiService;

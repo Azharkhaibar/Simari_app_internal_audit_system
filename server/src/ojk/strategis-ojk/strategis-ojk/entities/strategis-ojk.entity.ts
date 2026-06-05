@@ -7,11 +7,11 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
-import { StrategisParameter } from './strategis-paramater.entity';
+import { StrategisParameter } from './strategis-parameter.entity';
 
 @Entity('strategis_ojk')
 @Index(['year', 'quarter'], { unique: true })
-export class StrategisOjk {
+export class Strategis {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,7 +24,7 @@ export class StrategisOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => StrategisParameter, (parameter) => parameter.strategisOjk, {
+  @OneToMany(() => StrategisParameter, (parameter) => parameter.strategis, {
     cascade: true,
     eager: false,
   })

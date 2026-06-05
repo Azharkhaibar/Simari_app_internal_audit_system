@@ -8,12 +8,13 @@ import DataTable from './components/likuiditas/datatable-likuiditas';
 import { RiskField, YearInput, QuarterSelect } from './components/likuiditas/input-likuiditas';
 import { getCurrentQuarter, getCurrentYear } from './utils/likuiditas/time';
 import { computeWeighted, makeEmptyRow } from './utils/likuiditas/calc';
-// import { exportLikuiditasToExcel } from './utils/likuiditas/exportExcel';
-import { exportLikuiditasToExcel } from './components/likuiditas/exportlikuiditastoexcel';
+import { exportLikuiditasToExcel } from './utils/likuiditas/exportExcel';
 import ToastNotification from './components/kpmr-likuiditas/ToastNotification';
 // ==== Hooks & Services ====
 // import { useLikuiditas } from './hooks/likuiditas/new-likuiditas.hook';
 import { useLikuiditas } from './hooks/likuiditas/likuiditas.hook';
+import { useAuditLog } from '../../../audit-log/hooks/audit-log.hooks';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 // ==== Section Inheritance Utils ====
 import {
   getSectionsForPeriod,
@@ -270,6 +271,19 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
 
   const clearToast = () => setToast({ show: false, message: '', type: 'success' });
 
+  // ====== AUDIT LOG ======
+  const { user: authUser } = useAuth();
+  const { logCreate, logUpdate, logDelete, logExport } = useAuditLog();
+  const getCurrentUser = () => {
+    if (authUser && authUser.user_id) return { id: authUser.user_id, name: authUser.userID || authUser.username || 'Unknown', role: authUser.role || 'User' };
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) return { id: storedUser.user_id, name: storedUser.userID || storedUser.username || 'Unknown', role: storedUser.role || 'User' };
+    } catch (e) { console.warn('Cannot parse user from localStorage:', e); }
+    return { id: null, name: 'System', role: 'System' };
+  };
+  const currentUser = getCurrentUser();
+
   // ====== HOOK LIKUIDITAS ======
   const {
     sections,
@@ -403,6 +417,11 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${newSection.parameter}" berhasil ditambahkan`, 'success');
+      await logCreate('LIKUIDITAS', `Tambah section: ${newSection.parameter} (No: ${newSection.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', sectionId: newSection.id, no: newSection.no, parameter: newSection.parameter, year: viewYear, quarter: viewQuarter }
+      });
     } catch (err) {
       console.error('Failed to add section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menambahkan section';
@@ -424,6 +443,11 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${sectionData.parameter}" berhasil diupdate`, 'success');
+      await logUpdate('LIKUIDITAS', `Update section: ${sectionData.parameter} (No: ${sectionData.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', sectionId: LIKUIDITAS_sectionForm.id, no: sectionData.no, parameter: sectionData.parameter, year: viewYear, quarter: viewQuarter }
+      });
     } catch (err) {
       console.error('Failed to update section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal mengupdate section';
@@ -463,6 +487,11 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${sectionToDelete.parameter}" berhasil dihapus`, 'success');
+      await logDelete('LIKUIDITAS', `Hapus section: ${sectionToDelete.parameter} (No: ${sectionToDelete.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', sectionId: id, no: sectionToDelete.no, parameter: sectionToDelete.parameter, year: viewYear, quarter: viewQuarter }
+      });
     } catch (err) {
       console.error('Failed to delete section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus section';
@@ -703,6 +732,11 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
       LIKUIDITAS_resetForm();
       setShowLikuiditasForm(false);
       showToast('Indikator berhasil ditambahkan!', 'success');
+      await logCreate('LIKUIDITAS', `Tambah indikator: ${backendData.indikator} (Section: ${section.parameter})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', sectionId: LIKUIDITAS_sectionForm.id, subNo: backendData.subNo, indikator: backendData.indikator, year: viewYear, quarter: viewQuarter }
+      });
     } catch (err) {
       console.error('Failed to add indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menambahkan indikator';
@@ -812,6 +846,11 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
       LIKUIDITAS_resetForm();
       setShowLikuiditasForm(false);
       showToast('Indikator berhasil diupdate!', 'success');
+      await logUpdate('LIKUIDITAS', `Update indikator: ${updateData.indikator} (ID: ${LIKUIDITAS_editingRow.id})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', indicatorId: LIKUIDITAS_editingRow.id, subNo: updateData.subNo, indikator: updateData.indikator, peringkat: updateData.peringkat, year: viewYear, quarter: viewQuarter }
+      });
     } catch (err) {
       console.error('Failed to update indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal mengupdate indikator';
@@ -830,6 +869,11 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
       await deleteIndikator(row.id);
       if (LIKUIDITAS_editingRow?.id === row.id) LIKUIDITAS_resetForm();
       showToast(`Indikator "${row.indikator}" berhasil dihapus`, 'success');
+      await logDelete('LIKUIDITAS', `Hapus indikator: ${row.indikator} (Sub No: ${row.subNo})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', indicatorId: row.id, subNo: row.subNo, indikator: row.indikator, year: viewYear, quarter: viewQuarter }
+      });
     } catch (err) {
       console.error('Failed to delete indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus indikator';
@@ -837,12 +881,22 @@ export default function LikuiditasInherent({ viewYear, viewQuarter, onViewYearCh
     }
   };
 
-  const LIKUIDITAS_exportExcel = () => {
+  const LIKUIDITAS_exportExcel = async () => {
     try {
       exportLikuiditasToExcel(LIKUIDITAS_filtered, viewYear, viewQuarter);
       showToast(`Data Likuiditas tahun ${viewYear} triwulan ${viewQuarter} berhasil diexport`, 'success');
+      await logExport('LIKUIDITAS', `Export data Likuiditas ${viewYear} TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: { type: 'inherent', year: viewYear, quarter: viewQuarter, dataCount: LIKUIDITAS_filtered.length }
+      });
     } catch (err) {
       showToast('Gagal mengexport data', 'error');
+      await logExport('LIKUIDITAS', `Gagal export Likuiditas ${viewYear} TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: err.message }
+      });
     }
   };
 

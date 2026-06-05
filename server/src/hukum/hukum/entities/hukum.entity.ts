@@ -1,4 +1,4 @@
-// src/entities/hukum/hukum.entity.ts
+// src/entities/strategik/hukum.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -11,6 +11,7 @@ import {
   Unique,
 } from 'typeorm';
 import { HukumSection } from './hukum-section.entity';
+
 export enum CalculationMode {
   RASIO = 'RASIO',
   NILAI_TUNGGAL = 'NILAI_TUNGGAL',
@@ -24,11 +25,10 @@ export enum Quarter {
   Q4 = 'Q4',
 }
 
-@Entity('indikators_hukum')
+@Entity('indikators_hukum_holding')
 @Unique('UQ_HUKUM_PERIOD_SUBNO', ['year', 'quarter', 'subNo', 'sectionId'])
 @Index('IDX_HUKUM_PERIOD', ['year', 'quarter'])
 @Index('IDX_HUKUM_SECTION', ['sectionId'])
-@Index('IDX_HUKUM_YEAR_QUARTER', ['year', 'quarter'])
 export class Hukum {
   @PrimaryGeneratedColumn()
   id: number;
@@ -53,7 +53,7 @@ export class Hukum {
 
   // ========== DATA SECTION (Copy dari master) ==========
   @Column({ type: 'varchar', length: 50 })
-  no: string; // No section, contoh: "6.1"
+  no: string;
 
   @Column({
     type: 'varchar',
@@ -76,7 +76,7 @@ export class Hukum {
     length: 50,
     name: 'sub_no',
   })
-  subNo: string; // Contoh: "6.1.1" - UNIK per periode+section
+  subNo: string;
 
   @Column({ type: 'varchar', length: 1000 })
   indikator: string;
@@ -215,7 +215,7 @@ export class Hukum {
   @Column({
     type: 'decimal',
     precision: 10,
-    scale: 2,
+    scale: 4,
   })
   weighted: number;
 

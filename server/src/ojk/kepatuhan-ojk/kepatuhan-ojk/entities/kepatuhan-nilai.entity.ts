@@ -10,8 +10,10 @@ import {
 } from 'typeorm';
 import { KepatuhanParameter } from './kepatuhan-paramater.entity';
 
-@Entity('kepatuhan_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('kepatuhan_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class KepatuhanNilai {
   @PrimaryGeneratedColumn()
   id: number;

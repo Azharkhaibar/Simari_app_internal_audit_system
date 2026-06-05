@@ -7,8 +7,8 @@ import {
   Index,
   OneToMany,
 } from 'typeorm';
-// import { KPMRLikuiditasQuestion } from './kpmr-likuiditas-pertanyaan.entity';
 import { KPMRLikuiditasQuestion } from './kpmr-likuiditas-pertanyaan.entity';
+
 @Entity('kpmr_likuiditas_aspek_holding')
 @Index('UQ_YEAR_ASPEK_NO_LIKUIDITAS', ['year', 'aspekNo'], { unique: true })
 export class KPMRLikuiditasAspect {

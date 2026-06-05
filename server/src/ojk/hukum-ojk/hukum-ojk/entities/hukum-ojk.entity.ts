@@ -24,7 +24,7 @@ export class HukumOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => HukumParameter, (parameter) => parameter.hukumOjk, {
+  @OneToMany(() => HukumParameter, (parameter) => parameter.hukum, {
     cascade: true,
     eager: false,
   })

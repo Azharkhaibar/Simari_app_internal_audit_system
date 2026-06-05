@@ -1,20 +1,15 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/strategik.module.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Stratejik/stratejik.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-// import { StrategikSection } from '../../../entities/strategik/stratejik-section.entity';
-// import { Strategik } from '../../../entities/strategik/stratejik.entity';
-// import { StrategikService } from './services/strategik.service';
-// import { StrategikController } from './controllers/strategik.controller';
-
-import { StrategikSection } from './entities/stratejik-section.entity';
-import { Strategik } from './entities/stratejik.entity';
-import { StrategikService } from './stratejik.service';
-import { StrategikController } from './stratejik.controller';
+import { StratejikController } from './stratejik.controller';
+import { StratejikService } from './stratejik.service';
+import { Stratejik } from './entities/stratejik.entity';
+import { StratejikSection } from './entities/stratejik-section.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([StrategikSection, Strategik])],
-  controllers: [StrategikController],
-  providers: [StrategikService],
-  exports: [StrategikService],
+  imports: [TypeOrmModule.forFeature([Stratejik, StratejikSection])],
+  controllers: [StratejikController],
+  providers: [StratejikService],
+  exports: [StratejikService],
 })
-export class StrategikModule {}
+export class StratejikModule {}

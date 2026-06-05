@@ -4,57 +4,10 @@ import RiskTabs from '../../../../components/ui/risk-tabs';
 import KepatuhanInherent from './kepatuhan-inherent';
 import KepatuhanKpmrPage from './kepatuhan-kpmr';
 import { useHeaderStore } from '../../../../store/header';
-import { exportInherent } from '../../../../utils/export/export-inherent';
-import { loadInherent, saveInherent, saveDerived, notifyRiskUpdated } from '../../../../utils/storage/risk-storage-nilai';
-import computeDerived from '../../../../utils/compute/compute-derived';
-import { normalizeInherentRows } from '../utils/normalize/normalize-inherent-rows';
+import { exportKpmr } from '../../../../utils/export/export-kpmr';
 import useKpmrKepatuhan from '../hooks/kpmr/kepatuhan-kpmr.hook';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
-// ========== UTILITY FUNCTIONS ==========
-const getInherentSignature = (rows = []) => {
-  return JSON.stringify(
-    rows.map((p) => ({
-      id: p.id,
-      nomor: p.nomor,
-      judul: p.judul,
-      bobot: p.bobot,
-      aspekId: p.aspekId,
-      pertanyaan: (p.pertanyaanList || []).map((n) => ({
-        id: n.id,
-        nomor: n.nomor,
-        pertanyaan: n.pertanyaan,
-        skor: n.skor,
-        indicator: n.indicator,
-        evidence: n.evidence,
-        catatan: n.catatan,
-      })),
-    })),
-  );
-};
-
-function computeInherentSnapshot(rows = []) {
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return { summary: 0, meta: { formula: 'No data' } };
-  }
-
-  let totalWeighted = 0;
-  rows.forEach((aspek) => {
-    if (!Array.isArray(aspek.pertanyaanList)) return;
-    aspek.pertanyaanList.forEach((pertanyaan) => {
-      const derived = computeDerived(pertanyaan, aspek);
-      if (Number.isFinite(derived?.weighted)) {
-        totalWeighted += derived.weighted;
-      }
-    });
-  });
-
-  return {
-    summary: Number(totalWeighted.toFixed(2)),
-    meta: { formula: 'SUM(all derived.weighted)' },
-  };
-}
 
 // ========== FORMAT KPMR ROWS ==========
 const formatKpmrRowsFromBackend = (aspekList = []) => {
@@ -94,17 +47,11 @@ const formatKpmrRowsFromBackend = (aspekList = []) => {
 
 export default function KepatuhanOJK() {
   const { year, activeQuarter, search, exportRequestId, resetExport } = useHeaderStore();
-  const CATEGORY_ID = 'kepatuhan';
 
   // ========== STATE MANAGEMENT ==========
   const [activeTab, setActiveTab] = useState('inherent');
-  const [inherentRows, setInherentRows] = useState([]);
   const [kpmrRows, setKpmrRows] = useState([]);
   const [kpmrId, setKpmrId] = useState(null);
-  const [isDataReady, setIsDataReady] = useState(false);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
-  const [lastSavedSignature, setLastSavedSignature] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
   const [isKpmrLoading, setIsKpmrLoading] = useState(false);
   const [kpmrLoadError, setKpmrLoadError] = useState(null);
   const [isCreatingKpmr, setIsCreatingKpmr] = useState(false);
@@ -116,15 +63,11 @@ export default function KepatuhanOJK() {
   const [loadedYear, setLoadedYear] = useState(null);
 
   // ========== REFS ==========
-  const didMountRef = useRef(false);
-  const initialRowsRef = useRef([]);
-  const saveTimeoutRef = useRef(null);
   const isLoadingKpmrRef = useRef(false);
-  const initialLoadAttemptedRef = useRef(false);
   const createKpmrAttemptedRef = useRef(false);
 
   // ========== HOOK KPMR ==========
-  const { kpmr, loading: kpmrHookLoading, error: kpmrHookError, loadKpmrByYearQuarter, refreshKpmrData, createKpmr, addAspek } = useKpmrKepatuhan();
+  const { kpmr, loading: kpmrHookLoading, error: kpmrHookError, loadKpmrByYearQuarter, refreshKpmrData, createKpmr } = useKpmrKepatuhan();
 
   // ========== SYNC HOOK LOADING STATE ==========
   useEffect(() => {
@@ -185,7 +128,7 @@ export default function KepatuhanOJK() {
     }
   }, [year, createKpmr]);
 
-  // ========== LOAD KPMR DATA - PERBAIKAN UTAMA ==========
+  // ========== LOAD KPMR DATA ==========
   useEffect(() => {
     if (!year) return;
 
@@ -250,9 +193,9 @@ export default function KepatuhanOJK() {
     loadKpmrData();
 
     // ✅ DEPENDENCY: HANYA year yang berubah
-  }, [year]); // HAPUS loadKpmrByYearQuarter dari dependency
+  }, [year]);
 
-  // ========== SYNC KPMR DATA DARI HOOK - PERBAIKAN ==========
+  // ========== SYNC KPMR DATA DARI HOOK ==========
   useEffect(() => {
     if (!kpmr?.id) return;
 
@@ -276,9 +219,7 @@ export default function KepatuhanOJK() {
     // Update rows
     const formattedRows = formatKpmrRowsFromBackend(kpmr.aspekList || []);
     setKpmrRows(formattedRows);
-
-    // ✅ HAPUS DEPENDENCY yg tidak perlu
-  }, [kpmr]); // HAPUS kpmrId dan kpmrRows dari dependency
+  }, [kpmr]);
 
   // ========== HANDLE REFRESH ==========
   const handleKpmrRefresh = useCallback(async () => {
@@ -305,178 +246,28 @@ export default function KepatuhanOJK() {
     console.log(`🏗️ [Kepatuhan] Membangun KPMR Page untuk tahun ${year} dengan ID: ${kpmrId || 'null'}`);
 
     return <KepatuhanKpmrPage key={`kpmr-page-${year}`} rows={kpmrRows} setRows={setKpmrRows} search={search} kpmrId={kpmrId} onRefreshData={handleKpmrRefresh} onCreateKpmr={createNewKpmr} />;
-  }, [kpmrRows, search, kpmrId, year, createNewKpmr]);
+  }, [kpmrRows, search, kpmrId, year, handleKpmrRefresh, createNewKpmr]);
 
-  // ========== PROCESS KPMR DATA FROM HOOK ==========
+  const handleTabChange = useCallback((tab) => {
+    setActiveTab(tab);
+  }, []);
+
+  // ========== EXPORT HANDLER FOR KPMR ==========
   useEffect(() => {
-    if (!kpmr?.id) return;
+    if (!exportRequestId) return;
 
-    if (kpmrId !== kpmr.id) {
-      console.log(`🆔 [Kepatuhan] kpmrId berubah: ${kpmrId} -> ${kpmr.id}`);
-      setKpmrId(kpmr.id);
-    }
-
-    const formattedRows = formatKpmrRowsFromBackend(kpmr.aspekList || []);
-    const currentRowsJson = JSON.stringify(kpmrRows);
-    const newRowsJson = JSON.stringify(formattedRows);
-
-    if (currentRowsJson !== newRowsJson) {
-      console.log(`📝 [Kepatuhan] Update rows: ${kpmrRows.length} -> ${formattedRows.length}`);
-      setKpmrRows(formattedRows);
-    }
-  }, [kpmr]);
-
-  // ========== LOAD INHERENT DATA ==========
-  useEffect(() => {
-    console.log('🚀 [Kepatuhan] LOADING INHERENT DATA', { year, quarter: activeQuarter });
-
-    setIsDataReady(false);
-    setInitialLoadDone(false);
-
-    const inh = loadInherent({
-      categoryId: CATEGORY_ID,
-      year,
-      quarter: activeQuarter,
-    });
-
-    const normalizedInh = inh && inh.length > 0 ? normalizeInherentRows(inh) : [];
-    initialRowsRef.current = normalizedInh;
-    setLastSavedSignature(getInherentSignature(normalizedInh));
-    setInherentRows(normalizedInh);
-
-    setIsDataReady(true);
-    setInitialLoadDone(true);
-    console.log('✅ [Kepatuhan] Inherent data loaded:', normalizedInh.length, 'rows');
-  }, [year, activeQuarter]);
-
-  // ========== SAVE INHERENT FUNCTION ==========
-  const saveInherentData = useCallback(() => {
-    if (!isDataReady || !initialLoadDone || inherentRows.length === 0) {
-      return false;
-    }
-
-    const currentSignature = getInherentSignature(inherentRows);
-
-    if (currentSignature === lastSavedSignature && !isSaving) {
-      return true;
-    }
-
-    setIsSaving(true);
-
-    try {
-      saveInherent({
-        categoryId: CATEGORY_ID,
-        year,
-        quarter: activeQuarter,
-        rows: inherentRows,
-      });
-
-      const snapshot = computeInherentSnapshot(inherentRows);
-
-      const derivedValues = inherentRows.flatMap((aspek) => (aspek.pertanyaanList || []).map((pertanyaan) => computeDerived(pertanyaan, aspek)));
-
-      saveDerived({
-        categoryId: CATEGORY_ID,
-        year,
-        quarter: activeQuarter,
-        snapshot: snapshot,
-        values: derivedValues,
-      });
-
-      notifyRiskUpdated();
-
-      setLastSavedSignature(currentSignature);
-
-      return true;
-    } catch (error) {
-      console.error('❌ Gagal menyimpan inherent:', error);
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
-  }, [inherentRows, isDataReady, year, activeQuarter, initialLoadDone, lastSavedSignature, isSaving]);
-
-  // ========== AUTO-SAVE INHERENT ==========
-  useEffect(() => {
-    if (!isDataReady || !initialLoadDone) return;
-    if (activeTab !== 'inherent') return;
-
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    saveTimeoutRef.current = setTimeout(() => {
-      const currentSignature = getInherentSignature(inherentRows);
-
-      if (currentSignature !== lastSavedSignature) {
-        saveInherentData();
+    if (activeTab === 'kpmr') {
+      if (!isKpmrLoading && kpmrRows.length > 0) {
+        exportKpmr({
+          rows: kpmrRows,
+          year,
+          quarter: activeQuarter,
+          categoryLabel: 'Kepatuhan',
+        });
       }
-    }, 2000);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [inherentRows, activeTab, isDataReady, initialLoadDone, lastSavedSignature, saveInherentData]);
-
-  // ========== BEFORE UNLOAD HANDLER ==========
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-
-      const handleBeforeUnload = (e) => {
-        if (activeTab === 'inherent' && inherentRows.length > 0) {
-          const currentSignature = getInherentSignature(inherentRows);
-          if (currentSignature !== lastSavedSignature) {
-            e.preventDefault();
-            e.returnValue = 'Ada perubahan yang belum disimpan. Yakin ingin keluar?';
-            saveInherentData();
-            return e.returnValue;
-          }
-        }
-      };
-
-      window.addEventListener('beforeunload', handleBeforeUnload);
-
-      return () => {
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      };
+      resetExport();
     }
-  }, [activeTab, inherentRows, lastSavedSignature, saveInherentData]);
-
-  // ========== EXPORT HANDLER ==========
-  useEffect(() => {
-    if (!exportRequestId || !isDataReady) return;
-
-    if (activeTab === 'inherent') {
-      exportInherent({
-        rows: inherentRows,
-        year,
-        quarter: activeQuarter,
-        categoryLabel: 'Kepatuhan',
-      });
-    }
-
-    resetExport();
-  }, [exportRequestId, isDataReady, activeTab, inherentRows, year, activeQuarter, resetExport]);
-
-  // ========== TAB CHANGE HANDLER ==========
-  const handleTabChange = useCallback(
-    (tab) => {
-      if (activeTab === 'inherent' && inherentRows.length > 0) {
-        const currentSignature = getInherentSignature(inherentRows);
-        if (currentSignature !== lastSavedSignature) {
-          saveInherentData();
-        }
-      }
-
-      setActiveTab(tab);
-    },
-    [activeTab, inherentRows, lastSavedSignature, saveInherentData],
-  );
-
-  // ========== RENDER LOGIC ==========
+  }, [exportRequestId, activeTab, kpmrRows, isKpmrLoading, year, activeQuarter, resetExport]);
 
   if (!year) {
     return (
@@ -496,33 +287,6 @@ export default function KepatuhanOJK() {
               <div className="text-lg font-semibold">⚠️ Tahun Tidak Tersedia</div>
             </div>
             <div className="text-sm">Silakan pilih tahun terlebih dahulu.</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (activeTab === 'inherent' && !isDataReady) {
-    return (
-      <div className="w-full space-y-4">
-        <Header title="Risk Profile – Kepatuhan" />
-        <RiskTabs
-          value={activeTab}
-          onChange={handleTabChange}
-          tabs={[
-            { value: 'inherent', label: 'Inherent Risk' },
-            { value: 'kpmr', label: 'KPMR' },
-          ]}
-        />
-        <div className="w-full">
-          <div className="bg-blue-700 text-white px-4 py-8 rounded-lg border border-slate-700">
-            <div className="flex flex-col items-center justify-center gap-3">
-              <Loader2 className="w-8 h-8 animate-spin" />
-              <div className="text-lg font-semibold">Memuat Data Inherent Risk...</div>
-              <div className="text-sm text-blue-200">
-                {year} Q{activeQuarter}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -577,7 +341,6 @@ export default function KepatuhanOJK() {
                 setKpmrDataLoaded(false);
                 setKpmrLoadError(null);
                 setLoadedYear(null);
-                initialLoadAttemptedRef.current = false;
               }}
               variant="outline"
               className="border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -590,7 +353,6 @@ export default function KepatuhanOJK() {
     );
   }
 
-  // ✅ RENDER NORMAL
   return (
     <div className="w-full space-y-4">
       <Header title="Risk Profile – Kepatuhan" />
@@ -605,7 +367,7 @@ export default function KepatuhanOJK() {
       />
 
       <div className="w-full">
-        {activeTab === 'inherent' && <KepatuhanInherent rows={inherentRows} setRows={setInherentRows} search={search} active onSaveData={saveInherentData} />}
+        {activeTab === 'inherent' && <KepatuhanInherent />}
 
         {activeTab === 'kpmr' && (
           <div className="w-full">
@@ -647,3 +409,4 @@ export default function KepatuhanOJK() {
     </div>
   );
 }
+

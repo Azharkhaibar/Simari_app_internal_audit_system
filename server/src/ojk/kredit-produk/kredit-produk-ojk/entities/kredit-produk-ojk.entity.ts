@@ -11,7 +11,7 @@ import { KreditParameter } from './kredit-produk-parameter.entity';
 
 @Entity('kredit_produk_ojk')
 @Index(['year', 'quarter'], { unique: true })
-export class KreditProdukOjk {
+export class Kredit {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,8 +24,7 @@ export class KreditProdukOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  // Relasi ke parameter
-  @OneToMany(() => KreditParameter, (parameter) => parameter.kreditProdukOjk, {
+  @OneToMany(() => KreditParameter, (parameter) => parameter.kredit, {
     cascade: true,
     eager: false,
   })

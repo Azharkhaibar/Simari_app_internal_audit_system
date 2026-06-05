@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { HukumOjkService } from './hukum-ojk.service';
-import { HukumOjkController } from './hukum-ojk.controller';
+import { HukumService } from './hukum-ojk.service';
+import { HukumController } from './hukum-ojk.controller';
 import { HukumOjk } from './entities/hukum-ojk.entity';
 import { HukumParameter } from './entities/hukum-paramater.entity';
 import { HukumNilai } from './entities/hukum-nilai.entity';
@@ -16,8 +16,8 @@ import { InherentReferenceHukum } from './entities/hukum-inherent-references.ent
       InherentReferenceHukum,
     ]),
   ],
-  controllers: [HukumOjkController],
-  providers: [HukumOjkService],
-  exports: [HukumOjkService],
+  controllers: [HukumController],
+  providers: [HukumService],
+  exports: [HukumService],
 })
 export class HukumOjkModule {}

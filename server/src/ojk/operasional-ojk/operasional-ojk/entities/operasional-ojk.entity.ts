@@ -8,7 +8,6 @@ import {
   OneToMany,
 } from 'typeorm';
 import { OperasionalParameter } from './operasional-produk-parameter.entity';
-
 @Entity('operasional_ojk')
 @Index(['year', 'quarter'], { unique: true })
 export class Operasional {

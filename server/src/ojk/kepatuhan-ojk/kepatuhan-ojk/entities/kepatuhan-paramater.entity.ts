@@ -12,8 +12,10 @@ import {
 import { KepatuhanOjk } from './kepatuhan-ojk.entity';
 import { KepatuhanNilai } from './kepatuhan-nilai.entity';
 
-@Entity('kepatuhan_parameters')
-@Index(['kepatuhanId', 'nomor'], { unique: false })
+@Entity('kepatuhan_parameters_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['kepatuhanId', 'nomor'])
+@Index(['kepatuhanId', 'orderIndex'])
 export class KepatuhanParameter {
   @PrimaryGeneratedColumn()
   id: number;
@@ -35,13 +37,13 @@ export class KepatuhanParameter {
     underlying?: string[];
   };
 
-  @Column({ name: 'kepatuhan_produk_ojk_id' }) // UBAH INI
+  @Column({ name: 'kepatuhan_ojk_id' })
   kepatuhanId: number;
 
   @ManyToOne(() => KepatuhanOjk, (kepatuhan) => kepatuhan.parameters, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'kepatuhan_produk_ojk_id' }) // UBAH INI
+  @JoinColumn({ name: 'kepatuhan_ojk_id' })
   kepatuhan: KepatuhanOjk;
 
   @OneToMany(() => KepatuhanNilai, (nilai) => nilai.parameter, {

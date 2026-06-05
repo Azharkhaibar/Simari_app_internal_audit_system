@@ -10,8 +10,8 @@ import {
   OneToMany,
 } from 'typeorm';
 import { KPMRLikuiditasAspect } from './kpmr-likuiditas-aspek.entity';
-// import { KPMRLikuiditasDefinition } from './kpmr-likuiditas-definisi.entity';
 import { KPMRLikuiditasDefinition } from './kpmr-likuiditas-definisi.entity';
+
 @Entity('kpmr_likuiditas_pertanyaan_holding')
 @Index('IDX_KPMR_LIKUIDITAS_QUESTION_ASPECT', ['year', 'aspekNo'])
 export class KPMRLikuiditasQuestion {

@@ -10,8 +10,9 @@ import {
 } from 'typeorm';
 import { KreditParameter } from './kredit-produk-parameter.entity';
 
-@Entity('kredit_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('kredit_nilai_ojk')
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class KreditNilai {
   @PrimaryGeneratedColumn()
   id: number;
@@ -50,7 +51,6 @@ export class KreditNilai {
     high?: string;
   };
 
-  // Foreign key ke Parameter
   @Column({ name: 'parameter_id' })
   parameterId: number;
 

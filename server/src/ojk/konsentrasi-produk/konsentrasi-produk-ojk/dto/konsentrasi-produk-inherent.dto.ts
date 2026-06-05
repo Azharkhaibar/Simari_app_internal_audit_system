@@ -150,8 +150,8 @@ export class RiskindikatorDto {
 
 // === MAIN DTOs ===
 
-// DTO untuk membuat KonsentrasiProdukOjk (header)
-export class CreateKonsentrasiProdukInherentDto {
+// DTO untuk membuat Konsentrasi (header)
+export class CreateKonsentrasiDto {
   @IsInt()
   @Min(2000)
   year: number;
@@ -174,8 +174,8 @@ export class CreateKonsentrasiProdukInherentDto {
   version?: string;
 }
 
-// DTO untuk update KonsentrasiProdukOjk
-export class UpdateKonsentrasiProdukInherentDto {
+// DTO untuk update Konsentrasi
+export class UpdateKonsentrasiDto {
   @IsOptional()
   @IsInt()
   @Min(2000)

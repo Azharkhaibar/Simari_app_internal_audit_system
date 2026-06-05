@@ -8,10 +8,12 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { StrategisParameter } from './strategis-paramater.entity';
+import { StrategisParameter } from './strategis-parameter.entity';
 
-@Entity('strategis_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('strategis_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class StrategisNilai {
   @PrimaryGeneratedColumn()
   id: number;

@@ -81,7 +81,7 @@ const COLORS = {
  * }} options
  */
 export function exportPasarToExcel(filteredRows, viewYear, viewQuarter, options = {}) {
-  const { sheetName = `${viewYear}-${viewQuarter}`, filePrefix = 'FORM-INVESTASI', summaryLabel = 'Summary', groupBySection = false } = options;
+  const { sheetName = `${viewYear}-${viewQuarter}`, filePrefix = 'FORM-PASAR', summaryLabel = 'Summary', groupBySection = true } = options;
 
   const headers1 = ['No', 'Bobot', 'Parameter atau Indikator', '', '', 'Bobot', 'Sumber Risiko', 'Dampak', 'Low', '', 'Moderate', 'Moderate to High', 'High', 'Hasil', 'Peringkat', 'Weighted', 'Keterangan'];
   const headers2 = ['', '', 'Section', '', 'Indikator', '', '', '', '', '', '', '', '', '', '', '', ''];

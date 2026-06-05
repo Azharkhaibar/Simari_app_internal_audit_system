@@ -1,9 +1,9 @@
-// services/hukum-api.service.ts
+// services/hukum_api.service.ts
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:5530/api/v1';
 
-export const api_hukum = axios.create({
+export const api_hukum_produk = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
@@ -11,7 +11,7 @@ export const api_hukum = axios.create({
   timeout: 10000,
 });
 
-api_hukum.interceptors.response.use(
+api_hukum_produk.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     console.error('❌ [hukum API] Error:', {
@@ -44,4 +44,4 @@ api_hukum.interceptors.response.use(
   },
 );
 
-export default api_hukum;
+export default api_hukum_produk;

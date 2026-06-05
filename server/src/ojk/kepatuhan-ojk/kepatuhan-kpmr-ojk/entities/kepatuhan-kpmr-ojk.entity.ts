@@ -1,3 +1,4 @@
+// kepatuhan-kpmr-ojk.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,7 +11,7 @@ import {
 import { KpmrAspekKepatuhan } from './kepatuhan-kpmr-aspek.entity';
 
 @Entity('kpmr_kepatuhan_ojk')
-@Index(['year', 'quarter'], { unique: true })
+@Index(['year', 'quarter'])  // ✅ HAPUS { unique: true }
 @Index(['isActive', 'year', 'quarter'])
 @Index(['createdAt'])
 export class KpmrKepatuhanOjk {
@@ -26,7 +27,7 @@ export class KpmrKepatuhanOjk {
   @Column({ default: true, name: 'is_active' })
   isActive: boolean;
 
-  @OneToMany(() => KpmrAspekKepatuhan, (aspek) => aspek.kpmrKepatuhan, {
+  @OneToMany(() => KpmrAspekKepatuhan, (aspek) => aspek.kpmrOjk, {
     cascade: true,
     eager: false,
   })

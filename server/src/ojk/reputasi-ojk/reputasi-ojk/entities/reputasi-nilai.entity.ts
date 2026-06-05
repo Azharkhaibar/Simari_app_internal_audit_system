@@ -8,10 +8,12 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { ReputasiParameter } from './reputasi-paramater.entity';
+import { ReputasiParameter } from './reputasi-parameter.entity';
 
-@Entity('reputasi_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('reputasi_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class ReputasiNilai {
   @PrimaryGeneratedColumn()
   id: number;

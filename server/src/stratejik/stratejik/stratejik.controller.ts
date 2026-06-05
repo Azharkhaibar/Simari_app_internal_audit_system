@@ -1,4 +1,4 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/controllers/strategik.controller.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Stratejik/controllers/stratejik.controller.ts
 import {
   Controller,
   Get,
@@ -9,114 +9,103 @@ import {
   Param,
   Query,
   ParseIntPipe,
-  UsePipes,
-  ValidationPipe,
   HttpCode,
   HttpStatus,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
-// import { StrategikService } from '../services/strategik.service';
-// import { CreateStrategikSectionDto } from '../dto/create-strategik-section.dto';
-// import { UpdateStrategikSectionDto } from '../dto/update-strategik-section.dto';
-// import { CreateStrategikDto } from '../dto/create-strategik.dto';
-// import { UpdateStrategikDto } from '../dto/update-strategik.dto';
-// import { Quarter } from '../../../../entities/strategik/stratejik.entity';
-
-import { StrategikService } from './stratejik.service';
-import { CreateStrategikSectionDto } from './dto/create-stratejik-section.dto';
-import { UpdateStrategikSectionDto } from './dto/update-stratejik-section.dto';
-import { CreateStrategikDto } from './dto/create-stratejik.dto';
-import { UpdateStrategikDto } from './dto/update-stratejik.dto';
+import { StratejikService } from './stratejik.service';
+import { CreateStratejikSectionDto } from './dto/create-stratejik-section.dto';
+import { UpdateStratejikSectionDto } from './dto/update-stratejik-section.dto';
+import { CreateStratejikDto } from './dto/create-stratejik.dto';
+import { UpdateStratejikDto } from './dto/update-stratejik.dto';
 import { Quarter } from './entities/stratejik.entity';
-// src/features/Dashboard/pages/RiskProfile/pages/Strategik/controllers/strategik.controller.ts
 
-// ... imports ...
-
-@ApiTags('Strategik')
-@Controller('strategik')
-export class StrategikController {
-  constructor(private readonly strategikService: StrategikService) {}
+@ApiTags('Stratejik')
+@Controller('stratejik')
+export class StratejikController {
+  constructor(private readonly stratejikService: StratejikService) {}
 
   // ========== SECTION ENDPOINTS ==========
 
   @Post('sections')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create new strategik section' })
-  async createSection(@Body() createDto: CreateStrategikSectionDto) {
-    return await this.strategikService.createSection(createDto);
+  @ApiOperation({ summary: 'Create new stratejik section' })
+  @ApiResponse({ status: 201, description: 'Section created successfully' })
+  @ApiResponse({ status: 409, description: 'Section already exists' })
+  async createSection(@Body() createDto: CreateStratejikSectionDto) {
+    return await this.stratejikService.createSection(createDto);
   }
 
   @Get('sections')
-  @ApiOperation({ summary: 'Get all strategik sections' })
+  @ApiOperation({ summary: 'Get all stratejik sections' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean })
   async getSections(@Query('isActive') isActive?: boolean) {
-    return await this.strategikService.findAllSections(isActive);
+    return await this.stratejikService.findAllSections(isActive);
   }
 
   @Get('sections/:id')
-  @ApiOperation({ summary: 'Get strategik section by ID' })
+  @ApiOperation({ summary: 'Get stratejik section by ID' })
   async getSection(@Param('id', ParseIntPipe) id: number) {
-    return await this.strategikService.findSectionById(id); // Method ini harus ada di service
+    return await this.stratejikService.findSectionById(id);
+  }
+
+  @Get('sections/period')
+  @ApiOperation({ summary: 'Get stratejik sections by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.stratejikService.findSectionsByPeriod(year, quarter);
   }
 
   @Put('sections/:id')
-  @ApiOperation({ summary: 'Update strategik section' })
+  @ApiOperation({ summary: 'Update stratejik section' })
   async updateSection(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateStrategikSectionDto,
+    @Body() updateDto: UpdateStratejikSectionDto,
   ) {
-    return await this.strategikService.updateSection(id, updateDto);
+    return await this.stratejikService.updateSection(id, updateDto);
   }
 
   @Delete('sections/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete strategik section' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete stratejik section' })
   async deleteSection(@Param('id', ParseIntPipe) id: number) {
-    await this.strategikService.deleteSection(id);
-  }
-
-  @Get('indikators/sections-by-period')
-  @ApiOperation({ summary: 'Get sections with indicators by period' })
-  async getSectionsWithIndicatorsByPeriod(
-    @Query('year', new ParseIntPipe()) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return await this.strategikService.getSectionsWithIndicatorsByPeriod(
-      year,
-      quarter,
-    );
+    return await this.stratejikService.deleteSection(id);
   }
 
   // ========== INDIKATOR ENDPOINTS ==========
 
   @Post('indikators')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create new strategik indikator' })
-  async createIndikator(@Body() createDto: CreateStrategikDto) {
-    return await this.strategikService.createIndikator(createDto);
+  @ApiOperation({ summary: 'Create new stratejik indikator' })
+  @ApiResponse({ status: 201, description: 'Indikator created successfully' })
+  @ApiResponse({ status: 409, description: 'Indikator already exists' })
+  async createIndikator(@Body() createDto: CreateStratejikDto) {
+    return await this.stratejikService.createIndikator(createDto);
   }
 
   @Get('indikators')
-  @ApiOperation({ summary: 'Get all strategik indikators' })
+  @ApiOperation({ summary: 'Get all stratejik indikators' })
   async getAllIndikators() {
-    return await this.strategikService.findAllIndikators();
+    return await this.stratejikService.findAllIndikators();
   }
 
   @Get('indikators/period')
-  @ApiOperation({ summary: 'Get strategik indikators by period' })
+  @ApiOperation({ summary: 'Get stratejik indikators by period' })
   @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
   async getIndikatorsByPeriod(
     @Query('year', ParseIntPipe) year: number,
     @Query('quarter') quarter: Quarter,
   ) {
-    return await this.strategikService.findIndikatorsByPeriod(year, quarter);
+    return await this.stratejikService.findIndikatorsByPeriod(year, quarter);
   }
 
   @Get('indikators/search')
-  @ApiOperation({ summary: 'Search strategik indikators' })
+  @ApiOperation({ summary: 'Search stratejik indikators' })
   @ApiQuery({ name: 'query', required: false })
   @ApiQuery({ name: 'year', required: false })
   @ApiQuery({ name: 'quarter', required: false, enum: Quarter })
@@ -125,56 +114,69 @@ export class StrategikController {
     @Query('year') year?: number,
     @Query('quarter') quarter?: Quarter,
   ) {
-    return await this.strategikService.searchIndikators(query, year, quarter);
+    return await this.stratejikService.searchIndikators(query, year, quarter);
   }
 
   @Get('indikators/:id')
-  @ApiOperation({ summary: 'Get strategik indikator by ID' })
+  @ApiOperation({ summary: 'Get stratejik indikator by ID' })
   async getIndikator(@Param('id', ParseIntPipe) id: number) {
-    return await this.strategikService.findIndikatorById(id);
+    return await this.stratejikService.findIndikatorById(id);
   }
 
   @Put('indikators/:id')
-  @ApiOperation({ summary: 'Update strategik indikator' })
+  @ApiOperation({ summary: 'Update stratejik indikator' })
   async updateIndikator(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: UpdateStrategikDto,
+    @Body() updateDto: UpdateStratejikDto,
   ) {
-    return await this.strategikService.updateIndikator(id, updateDto);
+    return await this.stratejikService.updateIndikator(id, updateDto);
   }
 
   @Delete('indikators/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete strategik indikator' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete stratejik indikator' })
   async deleteIndikator(@Param('id', ParseIntPipe) id: number) {
-    await this.strategikService.deleteIndikator(id);
+    return await this.stratejikService.deleteIndikator(id);
+  }
+
+  // ========== COMPLEX QUERIES ENDPOINTS ==========
+
+  @Get('data/with-indicators')
+  @ApiOperation({
+    summary: 'Get sections with their indicators for a period',
+    description:
+      'Returns sections with nested indicators for a specific year and quarter',
+  })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsWithIndicatorsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.stratejikService.getSectionsWithIndicatorsByPeriod(
+      year,
+      quarter,
+    );
   }
 
   @Get('total-weighted')
-  @ApiOperation({ summary: 'Get total weighted by period' })
-  @ApiQuery({ name: 'year', required: true })
+  @ApiOperation({ summary: 'Get total weighted value by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
   async getTotalWeighted(
     @Query('year', ParseIntPipe) year: number,
     @Query('quarter') quarter: Quarter,
   ) {
-    const total = await this.strategikService.getTotalWeightedByPeriod(
+    const total = await this.stratejikService.getTotalWeightedByPeriod(
       year,
       quarter,
     );
-    return { total };
-  }
-
-  // PERBAIKAN: Hanya ada satu method getSectionsByPeriod
-  @Get('sections/period')
-  @ApiOperation({ summary: 'Get strategik sections by period' })
-  @ApiQuery({ name: 'year', required: true, type: Number })
-  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
-  async getSectionsByPeriod(
-    @Query('year', ParseIntPipe) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    return await this.strategikService.findSectionsByPeriod(year, quarter);
+    return {
+      success: true,
+      year,
+      quarter,
+      total,
+    };
   }
 
   @Get('periods')
@@ -184,7 +186,7 @@ export class StrategikController {
   })
   async getAvailablePeriods() {
     try {
-      const periods = await this.strategikService.getPeriods();
+      const periods = await this.stratejikService.getPeriods();
       return {
         success: true,
         data: periods,
@@ -196,19 +198,18 @@ export class StrategikController {
     }
   }
 
-  @Get('all-periods')
+  @Get('periods/with-counts')
   @ApiOperation({
-    summary: 'Get all periods with count',
-    description: 'Get periods with indicator counts',
+    summary: 'Get all periods with indicator counts',
+    description: 'Get periods with indicator counts for each period',
   })
-  async getAllPeriods() {
+  async getAllPeriodsWithCounts() {
     try {
-      const periods = await this.strategikService.getPeriods();
+      const periods = await this.stratejikService.getPeriods();
 
-      // Hitung jumlah indikator per periode
       const periodsWithCounts = await Promise.all(
         periods.map(async (period) => {
-          const count = await this.strategikService.getIndikatorCountByPeriod(
+          const count = await this.stratejikService.getIndikatorCountByPeriod(
             period.year,
             period.quarter,
           );
@@ -225,20 +226,44 @@ export class StrategikController {
         count: periodsWithCounts.length,
       };
     } catch (error) {
-      console.error('Error in getAllPeriods:', error);
+      console.error('Error in getAllPeriodsWithCounts:', error);
       throw error;
     }
   }
 
+  @Get('indikators/count')
+  @ApiOperation({ summary: 'Get indikator count by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getIndikatorCount(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    const count = await this.stratejikService.getIndikatorCountByPeriod(
+      year,
+      quarter,
+    );
+    return {
+      success: true,
+      year,
+      quarter,
+      count,
+    };
+  }
+
+  // ========== DUPLICATION ENDPOINT ==========
   @Post('indikators/:id/duplicate')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Duplicate indikator to new period' })
+  @ApiOperation({
+    summary: 'Duplicate indikator to new period',
+    description: 'Copy an existing indikator to a different period',
+  })
   async duplicateIndikator(
     @Param('id', ParseIntPipe) id: number,
     @Query('year', ParseIntPipe) year: number,
     @Query('quarter') quarter: Quarter,
   ) {
-    return await this.strategikService.duplicateIndikatorToNewPeriod(
+    return await this.stratejikService.duplicateIndikatorToNewPeriod(
       id,
       year,
       quarter,

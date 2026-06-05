@@ -1,24 +1,26 @@
-// src/ojk/likuiditas-produk/likuiditas-produk-ojk/likuiditas-produk-ojk.module.ts
+// likuiditas.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { LikuiditasProdukOjkService } from './likuiditas-produk-ojk.service';
-import { LikuiditasProdukOjkController } from './likuiditas-produk-ojk.controller';
-import { LikuiditasProdukOjk } from './entities/likuiditas-produk-ojk.entity';
+import { Likuiditas } from './entities/likuiditas-ojk.entity';
 import { LikuiditasParameter } from './entities/likuiditas-parameter.entity';
-import { LikuiditasNilai } from './entities/likuditas-nilai.entity';
-import { InherentReferenceLikuiditas } from './entities/likuditas-inherent-refrences.entity';
+import { LikuiditasNilai } from './entities/likuiditas-nilai.entity';
+import { LikuiditasReference } from './entities/likuiditas-inherent-references.entity';
+import { OjkModule } from 'src/ojk/ojk-category/entities/ojk-category.entity';
+import { LikuiditasService } from './likuiditas-produk-ojk.service';
+import { LikuiditasController } from './likuiditas-produk-ojk.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      LikuiditasProdukOjk,
+      Likuiditas,
       LikuiditasParameter,
       LikuiditasNilai,
-      InherentReferenceLikuiditas,
+      LikuiditasReference,
+      OjkModule,
     ]),
   ],
-  controllers: [LikuiditasProdukOjkController],
-  providers: [LikuiditasProdukOjkService],
-  exports: [LikuiditasProdukOjkService],
+  controllers: [LikuiditasController],
+  providers: [LikuiditasService],
+  exports: [LikuiditasService],
 })
 export class LikuiditasProdukOjkModule {}

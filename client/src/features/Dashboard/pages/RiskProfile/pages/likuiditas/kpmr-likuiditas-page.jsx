@@ -1,11 +1,11 @@
-// kpmr-likuiditas-page.jsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Download, Trash2, Edit3, Search, X } from 'lucide-react';
 import { getCurrentYear } from './utils/likuiditas/time';
 import { exportKPMRLikuiditasToExcel } from './utils/likuiditas/exportexcelkpmrinvest';
-// import { useKpmr } from './hooks/KPMR/kpmr-likuiditas.hook';
 import { useKpmrLikuiditas } from './hooks/kpmr-likuiditas/kpmr-likuiditas.hook';
 import ToastNotification from './components/kpmr-likuiditas/ToastNotification';
+import { useAuditLog } from '../../../audit-log/hooks/audit-log.hooks';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 
 // ===================== Brand =====================
 const PNM_BRAND = {
@@ -42,6 +42,12 @@ const QUARTER_LABEL = {
 };
 
 export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: propViewQuarter, onViewYearChange, query: propQuery, onQueryChange }) {
+  // ===== AUDIT LOG =====
+  const { logCreate, logUpdate, logDelete, logExport } = useAuditLog();
+  const { authUser } = useAuth();
+  const getCurrentUser = () => ({
+    userId: authUser?.id || localStorage.getItem('userId') || null,
+  });
   // ===== STATE DENGAN FALLBACK =====
   const [localViewYear, setLocalViewYear] = useState(() => {
     if (propViewYear && typeof propViewYear === 'number' && !isNaN(propViewYear)) {
@@ -189,6 +195,18 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
         }
 
         showToast(`Aspek "${editingAspectData.aspekTitle}" berhasil diupdate`, 'success');
+        try {
+          const user = getCurrentUser();
+          await logUpdate(
+            'LIKUIDITAS',
+            `Mengupdate Aspek KPMR Likuiditas: No. ${editingAspectData.aspekNo} - "${editingAspectData.aspekTitle}", Tahun: ${viewYear}`,
+            {
+              userId: user.userId,
+              isSuccess: true,
+              metadata: { type: 'kpmr', aspekId: editingAspectData.id, aspekNo: editingAspectData.aspekNo, aspekTitle: editingAspectData.aspekTitle, year: viewYear }
+            }
+          );
+        } catch (logErr) { console.warn('Audit log gagal (update aspek):', logErr); }
         setShowEditAspectModal(false);
 
         await Promise.all([fetchAspects(viewYear), fetchFullData(viewYear), fetchDefinitions(viewYear)]);
@@ -222,6 +240,18 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
 
       if (result && result.success) {
         showToast(result.message || 'Pertanyaan berhasil dihapus', 'success');
+        try {
+          const user = getCurrentUser();
+          await logDelete(
+            'LIKUIDITAS',
+            `Menghapus Pertanyaan KPMR Likuiditas: "${sectionTitle}" (No: ${sectionNo}) dari Aspek: ${aspekNo} - ${aspekTitle}`,
+            {
+              userId: user.userId,
+              isSuccess: true,
+              metadata: { type: 'kpmr', questionId, aspekNo, sectionNo, year: viewYear }
+            }
+          );
+        } catch (logErr) { console.warn('Audit log gagal (delete question):', logErr); }
 
         await Promise.all([fetchQuestions(viewYear), fetchFullData(viewYear), fetchAspects(viewYear)]);
       } else {
@@ -484,6 +514,18 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
       setKPMR_isAddingNewQuestion(false);
 
       showToast('Data berhasil disimpan!', 'success');
+      try {
+        const user = getCurrentUser();
+        await logCreate(
+          'LIKUIDITAS',
+          `Menambah data KPMR Likuiditas - Aspek: ${KPMR_form.aspekNo} ${KPMR_form.aspekTitle}, Pertanyaan: ${KPMR_form.sectionNo}, Tahun: ${KPMR_form.year}, Triwulan: ${KPMR_form.quarter}`,
+          {
+            userId: user.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', aspekNo: KPMR_form.aspekNo, sectionNo: KPMR_form.sectionNo, year: KPMR_form.year, quarter: KPMR_form.quarter }
+          }
+        );
+      } catch (logErr) { console.warn('Audit log gagal (create):', logErr); }
     } catch (err) {
       console.error('Gagal menyimpan data:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan';
@@ -741,6 +783,18 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
       setShowKPMRForm(false);
 
       showToast('Data berhasil diupdate!', 'success');
+      try {
+        const user = getCurrentUser();
+        await logUpdate(
+          'LIKUIDITAS',
+          `Mengupdate data KPMR Likuiditas - Aspek: ${KPMR_form.aspekNo}, Pertanyaan: ${KPMR_form.sectionNo}, Tahun: ${KPMR_form.year}, Triwulan: ${KPMR_form.quarter}`,
+          {
+            userId: user.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', aspekNo: KPMR_form.aspekNo, sectionNo: KPMR_form.sectionNo, year: KPMR_form.year, quarter: KPMR_form.quarter }
+          }
+        );
+      } catch (logErr) { console.warn('Audit log gagal (update):', logErr); }
     } catch (err) {
       console.error('❌ Gagal mengupdate data:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan';
@@ -762,6 +816,18 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
       const result = await deleteAspect(aspectId);
       if (result && result.success) {
         showToast(result.message || `Aspek "${aspectName}" berhasil dihapus`, 'success');
+        try {
+          const user = getCurrentUser();
+          await logDelete(
+            'LIKUIDITAS',
+            `Menghapus Aspek KPMR Likuiditas: "${aspectName}" (ID: ${aspectId}), Tahun: ${viewYear}`,
+            {
+              userId: user.userId,
+              isSuccess: true,
+              metadata: { type: 'kpmr', aspectId, aspectName, year: viewYear }
+            }
+          );
+        } catch (logErr) { console.warn('Audit log gagal (delete aspek):', logErr); }
         await Promise.all([fetchAspects(viewYear), fetchQuestions(viewYear), fetchFullData(viewYear)]);
       } else {
         showToast(result?.message || 'Gagal menghapus aspek', 'error');
@@ -773,7 +839,7 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
     }
   };
 
-  const KPMR_exportExcel = () => {
+  const KPMR_exportExcel = async () => {
     try {
       const allRows = groups.flatMap((g) =>
         g.sections.flatMap((s) =>
@@ -801,6 +867,18 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
       });
 
       showToast(`Data KPMR tahun ${viewYear} berhasil diexport`, 'success');
+      try {
+        const user = getCurrentUser();
+        await logExport(
+          'LIKUIDITAS',
+          `Export Excel KPMR Likuiditas tahun ${viewYear}`,
+          {
+            userId: user.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', year: viewYear, totalRows: allRows.length, format: 'Excel' }
+          }
+        );
+      } catch (logErr) { console.warn('Audit log gagal (export):', logErr); }
     } catch (err) {
       console.error('Export error:', err);
       showToast('Gagal mengexport data', 'error');
@@ -942,7 +1020,12 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
                     </label>
                     <label className="block col-span-2">
                       <div className="mb-1 text-[13px] text-white/90 font-medium">Judul Aspek</div>
-                      <input className="w-full rounded-xl px-3 py-2 bg-white text-gray-900" value={KPMR_form.aspekTitle} onChange={(e) => KPMR_handleChange('aspekTitle', e.target.value)} placeholder="Contoh: Aspek Manajemen Risiko" />
+                      <input
+                        className="w-full rounded-xl px-3 py-2 bg-white text-gray-900"
+                        value={KPMR_form.aspekTitle}
+                        onChange={(e) => KPMR_handleChange('aspekTitle', e.target.value)}
+                        placeholder="Contoh: Aspek Manajemen Risiko Likuiditas"
+                      />
                     </label>
                     <label className="block">
                       <div className="mb-1 text-[13px] text-white/90 font-medium">Bobot Aspek</div>
@@ -1121,7 +1204,7 @@ export default function LikuiditasKPMR({ viewYear: propViewYear, viewQuarter: pr
                   className="w-full rounded-xl px-4 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   value={editingAspectData.aspekTitle}
                   onChange={(e) => setEditingAspectData({ ...editingAspectData, aspekTitle: e.target.value })}
-                  placeholder="Contoh: Aspek Manajemen Risiko"
+                  placeholder="Contoh: Aspek Manajemen Risiko Likuiditas"
                 />
               </div>
 

@@ -10,21 +10,6 @@ import { Operasional } from './entities/operasional-ojk.entity';
 import { OperasionalParameter } from './entities/operasional-produk-parameter.entity';
 import { OperasionalNilai } from './entities/operasional-produk-nilai.entity';
 import { OperasionalReference } from './entities/operasional-inherent-references.entity';
-// import {
-//   CreateOperasionalDto,
-//   UpdateOperasionalDto,
-//   CreateParameterDto,
-//   UpdateParameterDto,
-//   CreateNilaiDto,
-//   UpdateNilaiDto,
-//   ReorderParametersDto,
-//   ReorderNilaiDto,
-//   UpdateSummaryDto,
-//   KategoriModel,
-//   KategoriPrinsip,
-//   KategoriJenis,
-//   JudulType,
-// } from './dto/operasional.dto';
 
 import {
   CreateOperasionalDto,
@@ -58,7 +43,209 @@ export class OperasionalService {
     private dataSource: DataSource,
   ) {}
 
-  // === CRUD UTAMA (Operasional) ===
+  private parseNumber(v: any): number {
+    if (v == null || v === '' || v === undefined) return NaN;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      let cleaned = v.trim();
+      cleaned = cleaned.replace(/\s/g, '');
+      const isPercent = cleaned.includes('%');
+      cleaned = cleaned.replace('%', '');
+      cleaned = cleaned.replace(/\./g, '');
+      cleaned = cleaned.replace(/,/g, '.');
+      const num = Number(cleaned);
+      if (!isNaN(num) && isPercent) {
+        return num / 100;
+      }
+      return num;
+    }
+    return Number(v);
+  }
+
+  private evaluateFormula(expr: string, subs: Record<string, number>): number {
+    if (!expr || typeof expr !== 'string' || expr.trim() === '') return NaN;
+    let e = expr.trim();
+    for (const [token, value] of Object.entries(subs)) {
+      const re = new RegExp(`\\b${token}\\b`, 'gi');
+      e = e.replace(re, String(value));
+    }
+    const safeRe = /^[0-9eE\.\+\-\*\/\(\)\s]+$/;
+    if (!safeRe.test(e)) {
+      return NaN;
+    }
+    try {
+      const fn = new Function(`"use strict"; return (${e});`);
+      const val = fn();
+      if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
+        return val;
+      }
+      return NaN;
+    } catch {
+      return NaN;
+    }
+  }
+
+  // ============================================
+  // RECALCULATE SUMMARY (TETAP)
+  // ============================================
+  private async recalculateSummary(operasionalId: number): Promise<void> {
+    this.logger.log(
+      `📊 Recalculating summary for Operasional ID: ${operasionalId}`,
+    );
+    try {
+      const operasional = await this.operasionalRepository.findOne({
+        where: { id: operasionalId },
+        relations: ['parameters', 'parameters.nilaiList'],
+      });
+      if (!operasional) {
+        this.logger.warn(`⚠️ Operasional with ID ${operasionalId} not found`);
+        return;
+      }
+
+      let totalWeighted = 0;
+      if (operasional.parameters && operasional.parameters.length > 0) {
+        for (const param of operasional.parameters) {
+          const paramBobotFraction = (Number(param.bobot) || 0) / 100;
+          if (param.nilaiList && param.nilaiList.length > 0) {
+            for (const nilai of param.nilaiList) {
+              const nilaiBobotFraction = (Number(nilai.bobot) || 0) / 100;
+
+              // 1. Dapatkan Raw Value dari Judul Nilai
+              let rawValue = NaN;
+              let rawString: string | null = null;
+              const judul = nilai.judul || {};
+
+              if (judul.type === 'Tanpa Faktor') {
+                const v = judul.value;
+                const formula = (judul.formula || '').trim();
+                const parsed = this.parseNumber(v);
+                if (!isNaN(parsed)) {
+                  rawValue = formula ? this.evaluateFormula(formula, { pem: parsed }) : parsed;
+                } else if (typeof v === 'string' && v.trim() !== '') {
+                  rawString = v.trim().toLowerCase();
+                }
+              } else if (judul.type === 'Satu Faktor') {
+                const v = judul.valuePembilang;
+                const formula = (judul.formula || '').trim();
+                const parsed = this.parseNumber(v);
+                if (!isNaN(parsed)) {
+                  rawValue = formula ? this.evaluateFormula(formula, { pem: parsed }) : parsed;
+                } else if (typeof v === 'string' && v.trim() !== '') {
+                  rawString = v.trim().toLowerCase();
+                }
+              } else if (judul.type === 'Dua Faktor') {
+                const vPem = judul.valuePembilang;
+                const vPen = judul.valuePenyebut;
+                const formula = (judul.formula || '').trim();
+                const pem = this.parseNumber(vPem);
+                const pen = this.parseNumber(vPen);
+                if (!isNaN(pem) && !isNaN(pen)) {
+                  rawValue = formula ? this.evaluateFormula(formula, { pem, pen }) : pen !== 0 ? pem / pen : NaN;
+                } else if (typeof vPem === 'string' && vPem.trim() !== '') {
+                  rawString = vPem.trim().toLowerCase();
+                }
+              }
+
+              // 2. Tentukan Peringkat (1 - 5) berdasarkan rentang Risk Indicator
+              let peringkat: number | null = null;
+              const ri = nilai.riskindikator || {};
+              const ranges = [
+                { key: 'low', rank: 1 },
+                { key: 'lowToModerate', rank: 2 },
+                { key: 'moderate', rank: 3 },
+                { key: 'moderateToHigh', rank: 4 },
+                { key: 'high', rank: 5 },
+              ];
+
+              if (!isNaN(rawValue)) {
+                for (const { key, rank } of ranges) {
+                  const rawText = String(ri[key] ?? '');
+                  const nums = rawText.match(/-?\d+(\.\d+)?/g);
+                  if (!nums || nums.length === 0) continue;
+
+                  const hasPercent = rawText.includes('%');
+                  let min = -Infinity;
+                  let max = Infinity;
+
+                  if (nums.length === 1) {
+                    let n = Number(nums[0]);
+                    if (hasPercent) n = n / 100;
+                    if (/≤|<=/.test(rawText)) max = n;
+                    else if (/≥|>=/.test(rawText)) min = n;
+                    else if (/^[xX]?\s*>|>\s*\d+/i.test(rawText)) {
+                      min = n;
+                      max = Infinity;
+                    } else if (/^[xX]?\s*<|<\s*\d+/i.test(rawText)) {
+                      min = -Infinity;
+                      max = n;
+                    } else {
+                      min = n;
+                      max = n;
+                    }
+                  } else {
+                    let n1 = Number(nums[0]);
+                    let n2 = Number(nums[1]);
+                    if (hasPercent) {
+                      n1 = n1 / 100;
+                      n2 = n2 / 100;
+                    }
+                    min = Math.min(n1, n2);
+                    max = Math.max(n1, n2);
+                  }
+
+                  if (rawValue >= min && rawValue <= max) {
+                    peringkat = rank;
+                    break;
+                  }
+                }
+              }
+
+              if (isNaN(rawValue) && rawString) {
+                for (const { key, rank } of ranges) {
+                  const riValue = String(ri[key] ?? '').trim().toLowerCase();
+                  if (!riValue) continue;
+                  if (riValue === rawString) {
+                    peringkat = rank;
+                    break;
+                  }
+                }
+              }
+
+              if (peringkat !== null) {
+                totalWeighted += paramBobotFraction * nilaiBobotFraction * peringkat;
+              }
+            }
+          }
+        }
+      }
+
+      let summaryBg: string;
+      if (totalWeighted <= 1.67) summaryBg = 'bg-green-400 text-black';
+      else if (totalWeighted <= 2.33) summaryBg = 'bg-lime-300 text-black';
+      else if (totalWeighted <= 3.00) summaryBg = 'bg-yellow-400 text-black';
+      else if (totalWeighted <= 3.67) summaryBg = 'bg-orange-400 text-black';
+      else summaryBg = 'bg-red-500 text-white';
+
+      operasional.summary = {
+        totalWeighted: Number(totalWeighted.toFixed(2)),
+        summaryBg,
+        computedAt: new Date(),
+      };
+      await this.operasionalRepository.save(operasional);
+      this.logger.log(
+        `✅ Summary recalculated for Operasional ID ${operasionalId}: totalWeighted=${totalWeighted.toFixed(2)}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `❌ Error recalculating summary for Operasional ${operasionalId}: ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  // ============================================
+  // CRUD UTAMA (Operasional)
+  // ============================================
 
   async create(createDto: CreateOperasionalDto, userId: string) {
     try {
@@ -68,8 +255,14 @@ export class OperasionalService {
 
       if (existing) {
         this.logger.warn(
-          `create: Data sudah ada untuk year ${createDto.year} quarter ${createDto.quarter}`,
+          `create: Data already exists for year ${createDto.year} quarter ${createDto.quarter}`,
         );
+        if (!existing.isActive) {
+          existing.isActive = true;
+          existing.updatedBy = userId;
+          existing.updatedAt = new Date();
+          await this.operasionalRepository.save(existing);
+        }
         return existing;
       }
 
@@ -80,13 +273,33 @@ export class OperasionalService {
         createdBy: userId,
         updatedBy: userId,
         version: createDto.version || '1.0.0',
+        summary: {
+          totalWeighted: 0,
+          summaryBg: 'bg-gray-400 text-black',
+          computedAt: new Date(),
+        },
       });
 
       const saved = await this.operasionalRepository.save(operasional);
-      this.logger.log(`create: Data berhasil dibuat - ID: ${saved.id}`);
-
+      this.logger.log(`create: New data created - ID: ${saved.id}`);
       return saved;
     } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+        this.logger.warn(
+          `create: Duplicate entry detected. Fetching existing data.`,
+        );
+        const existing = await this.operasionalRepository.findOne({
+          where: { year: createDto.year, quarter: createDto.quarter },
+        });
+        if (existing) {
+          if (!existing.isActive) {
+            existing.isActive = true;
+            existing.updatedBy = userId;
+            await this.operasionalRepository.save(existing);
+          }
+          return existing;
+        }
+      }
       this.logger.error(
         `Error creating Operasional: ${error.message}`,
         error.stack,
@@ -97,18 +310,12 @@ export class OperasionalService {
 
   async findActive(): Promise<Operasional | null> {
     this.logger.debug('findActive: Mencari data aktif');
-
     try {
       const operasional = await this.operasionalRepository.findOne({
         where: { isActive: true },
         relations: ['parameters', 'parameters.nilaiList'],
         order: {
-          parameters: {
-            orderIndex: 'ASC',
-            nilaiList: {
-              orderIndex: 'ASC',
-            },
-          },
+          parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
         },
       });
 
@@ -116,7 +323,6 @@ export class OperasionalService {
         this.logger.warn('findActive: Tidak ada data aktif ditemukan');
         return null;
       }
-
       this.logger.log(`findActive: Data ditemukan - ID: ${operasional.id}`);
       return operasional;
     } catch (error) {
@@ -132,28 +338,18 @@ export class OperasionalService {
     this.logger.log(
       `findByYearQuarter: Mencari data - Year: ${year}, Quarter: ${quarter}`,
     );
-
     try {
       const operasional = await this.operasionalRepository.findOne({
         where: { year, quarter },
         relations: ['parameters', 'parameters.nilaiList'],
         order: {
-          parameters: {
-            orderIndex: 'ASC',
-            nilaiList: {
-              orderIndex: 'ASC',
-            },
-          },
+          parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
         },
       });
-
       if (!operasional) {
-        this.logger.warn(
-          `findByYearQuarter: Data tidak ditemukan untuk Year: ${year}, Quarter: ${quarter}`,
-        );
+        this.logger.warn(`findByYearQuarter: Data tidak ditemukan`);
         return null;
       }
-
       this.logger.log(
         `findByYearQuarter: Data ditemukan - ID: ${operasional.id}`,
       );
@@ -169,27 +365,18 @@ export class OperasionalService {
 
   async findById(id: number): Promise<Operasional | null> {
     this.logger.log(`findById: Mencari data - ID: ${id}`);
-
     try {
       const operasional = await this.operasionalRepository.findOne({
         where: { id },
         relations: ['parameters', 'parameters.nilaiList'],
         order: {
-          parameters: {
-            orderIndex: 'ASC',
-            nilaiList: {
-              orderIndex: 'ASC',
-            },
-          },
+          parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
         },
       });
-
       if (!operasional) {
         this.logger.warn(`findById: Data dengan ID ${id} tidak ditemukan`);
         return null;
       }
-
-      this.logger.log(`findById: Data ditemukan - ID: ${operasional.id}`);
       return operasional;
     } catch (error) {
       this.logger.error(`findById: Error - ${error.message}`, error.stack);
@@ -207,13 +394,10 @@ export class OperasionalService {
 
   async update(id: number, updateDto: UpdateOperasionalDto, userId: string) {
     this.logger.log(`update: Mengupdate data - ID: ${id}`);
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id },
     });
-
     if (!operasional) {
-      this.logger.error(`update: Data dengan ID ${id} tidak ditemukan`);
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
 
@@ -231,12 +415,10 @@ export class OperasionalService {
     if (updateDto.lockedAt !== undefined)
       operasional.lockedAt = updateDto.lockedAt;
     if (updateDto.notes !== undefined) operasional.notes = updateDto.notes;
-
     operasional.updatedBy = userId;
 
     const result = await this.operasionalRepository.save(operasional);
     this.logger.log(`update: Data berhasil diupdate - ID: ${result.id}`);
-
     return result;
   }
 
@@ -245,110 +427,72 @@ export class OperasionalService {
     summaryDto: UpdateSummaryDto,
     userId: string,
   ) {
-    this.logger.log(`updateSummary: Mengupdate summary - ID: ${id}`);
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id },
     });
-
-    if (!operasional) {
+    if (!operasional)
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
-    }
-
     operasional.summary = {
       ...operasional.summary,
       ...summaryDto,
       computedAt: new Date(),
     };
     operasional.updatedBy = userId;
-
-    const result = await this.operasionalRepository.save(operasional);
-    this.logger.log(
-      `updateSummary: Summary berhasil diupdate - ID: ${result.id}`,
-    );
-    return result;
+    return this.operasionalRepository.save(operasional);
   }
 
   async updateActiveStatus(id: number, isActive: boolean, userId: string) {
-    this.logger.log(
-      `updateActiveStatus: Mengupdate status aktif - ID: ${id}, isActive: ${isActive}`,
-    );
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id },
     });
-
-    if (!operasional) {
-      this.logger.error(
-        `updateActiveStatus: Data dengan ID ${id} tidak ditemukan`,
-      );
+    if (!operasional)
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
-    }
-
     if (isActive) {
-      this.logger.debug('updateActiveStatus: Menonaktifkan data lain');
       await this.operasionalRepository
         .createQueryBuilder()
         .update(Operasional)
         .set({ isActive: false })
         .execute();
     }
-
     operasional.isActive = isActive;
     operasional.updatedBy = userId;
-
-    const result = await this.operasionalRepository.save(operasional);
-    this.logger.log(
-      `updateActiveStatus: Status berhasil diupdate - ID: ${result.id}`,
-    );
-
-    return result;
+    return this.operasionalRepository.save(operasional);
   }
 
   async remove(id: number) {
-    this.logger.log(`remove: Menghapus data - ID: ${id}`);
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id },
       relations: ['parameters', 'parameters.nilaiList'],
     });
-
-    if (!operasional) {
-      this.logger.error(`remove: Data dengan ID ${id} tidak ditemukan`);
+    if (!operasional)
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
-    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
       for (const parameter of operasional.parameters || []) {
         await queryRunner.manager.delete(OperasionalNilai, {
           parameterId: parameter.id,
         });
       }
-
       await queryRunner.manager.delete(OperasionalParameter, {
         operasionalId: id,
       });
-
       await queryRunner.manager.delete(Operasional, { id });
-
       await queryRunner.commitTransaction();
-      this.logger.log(`remove: Data berhasil dihapus - ID: ${id}`);
-
       return { message: 'Data berhasil dihapus', id };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`remove: Error - ${error.message}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
     }
   }
 
-  // === OPERASI PARAMETER ===
+  // ============================================
+  // OPERASI PARAMETER
+  // ============================================
 
   async addParameter(
     operasionalId: number,
@@ -358,76 +502,56 @@ export class OperasionalService {
     this.logger.log(
       `addParameter: Menambahkan parameter - Operasional ID: ${operasionalId}`,
     );
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id: operasionalId },
     });
-
-    if (!operasional) {
+    if (!operasional)
       throw new NotFoundException(
         `Data dengan ID ${operasionalId} tidak ditemukan`,
       );
-    }
 
     if (createParamDto.kategori) {
       const kategori = createParamDto.kategori;
-
       if (kategori.model === KategoriModel.OPEN_END) {
-        if (!kategori.jenis) {
+        if (!kategori.jenis)
           throw new BadRequestException(
             'Untuk model "open_end", jenis reksa dana wajib dipilih',
           );
-        }
-        if (kategori.underlying && kategori.underlying.length > 0) {
+        if (kategori.underlying && kategori.underlying.length > 0)
           throw new BadRequestException(
             'Untuk model "open_end", aset dasar harus kosong',
           );
-        }
-        if (!kategori.prinsip) {
+        if (!kategori.prinsip)
           throw new BadRequestException(
             'Prinsip (syariah/konvensional) wajib dipilih untuk model "open_end"',
           );
-        }
       }
-
       if (kategori.model === KategoriModel.TERSTRUKTUR) {
-        if (kategori.jenis) {
+        if (kategori.jenis)
           throw new BadRequestException(
             'Untuk model "terstruktur", jenis harus kosong',
           );
-        }
-
-        if (!kategori.underlying || kategori.underlying.length === 0) {
-          this.logger.warn(
-            `addParameter: Model "terstruktur" tanpa underlying untuk parameter "${createParamDto.judul}"`,
-          );
-        }
-
-        if (!kategori.prinsip) {
+        if (!kategori.prinsip)
           throw new BadRequestException(
             'Prinsip (syariah/konvensional) wajib dipilih untuk model "terstruktur"',
           );
-        }
       }
-
       if (kategori.model === KategoriModel.TANPA_MODEL) {
         if (
           kategori.prinsip ||
           kategori.jenis ||
           (kategori.underlying && kategori.underlying.length > 0)
-        ) {
+        )
           throw new BadRequestException(
             'Untuk model "tanpa_model", prinsip, jenis, dan aset dasar harus kosong',
           );
-        }
       }
     }
 
     const lastParam = await this.parameterRepository.findOne({
-      where: { operasionalId: operasionalId },
+      where: { operasionalId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastParam ? lastParam.orderIndex + 1 : 0;
 
     const kategoriFormatted = createParamDto.kategori
@@ -454,31 +578,22 @@ export class OperasionalService {
         judul: createParamDto.judul.trim(),
         bobot: createParamDto.bobot,
         kategori: kategoriFormatted,
-        operasionalId: operasionalId,
+        operasionalId,
         orderIndex: createParamDto.orderIndex ?? orderIndex,
       });
-
       const savedParam = await this.parameterRepository.save(parameter);
-
-      this.logger.log(
-        `addParameter: Parameter berhasil ditambahkan - ID: ${savedParam.id}`,
-      );
-
+      await this.recalculateSummary(operasionalId);
       await this.operasionalRepository.update(operasionalId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
       return savedParam;
     } catch (error: any) {
       this.logger.error('addParameter - Error saving parameter:', error);
-
-      if (error.code === '23502' || error.message.includes('null value')) {
+      if (error.code === '23502' || error.message.includes('null value'))
         throw new BadRequestException(
           'Error validasi: Pastikan semua field yang diperlukan terisi sesuai model yang dipilih',
         );
-      }
-
       throw error;
     }
   }
@@ -489,19 +604,13 @@ export class OperasionalService {
     updateParamDto: UpdateParameterDto,
     userId: string,
   ) {
-    this.logger.log(
-      `updateParameter: Mengupdate parameter - ID: ${parameterId}`,
-    );
-
     const parameter = await this.parameterRepository.findOne({
-      where: { id: parameterId, operasionalId: operasionalId },
+      where: { id: parameterId, operasionalId },
     });
-
-    if (!parameter) {
+    if (!parameter)
       throw new NotFoundException(
         `Parameter dengan ID ${parameterId} tidak ditemukan`,
       );
-    }
 
     if (updateParamDto.nomor !== undefined)
       parameter.nomor = updateParamDto.nomor;
@@ -514,57 +623,29 @@ export class OperasionalService {
 
     if (updateParamDto.kategori) {
       const kategori = updateParamDto.kategori;
-
       if (kategori.model === KategoriModel.TERSTRUKTUR) {
-        if (!kategori.prinsip) {
-          throw new BadRequestException(
-            'Prinsip (syariah/konvensional) wajib dipilih untuk model "terstruktur"',
-          );
-        }
-
-        if (!kategori.underlying || kategori.underlying.length === 0) {
-          this.logger.warn(
-            `updateParameter: Model "terstruktur" tanpa underlying untuk parameter "${parameter.judul}"`,
-          );
-        }
-
-        if (kategori.jenis) {
-          throw new BadRequestException(
-            'Untuk model "terstruktur", jenis harus kosong',
-          );
-        }
+        if (!kategori.prinsip)
+          throw new BadRequestException('Prinsip wajib dipilih');
+        if (kategori.jenis) throw new BadRequestException('Jenis harus kosong');
       }
-
       if (kategori.model === KategoriModel.OPEN_END) {
-        if (!kategori.prinsip) {
-          throw new BadRequestException(
-            'Prinsip (syariah/konvensional) wajib dipilih untuk model "open_end"',
-          );
-        }
-        if (!kategori.jenis) {
-          throw new BadRequestException(
-            'Untuk model "open_end", jenis reksa dana wajib dipilih',
-          );
-        }
-        if (kategori.underlying && kategori.underlying.length > 0) {
-          throw new BadRequestException(
-            'Untuk model "open_end", aset dasar harus kosong',
-          );
-        }
+        if (!kategori.prinsip)
+          throw new BadRequestException('Prinsip wajib dipilih');
+        if (!kategori.jenis)
+          throw new BadRequestException('Jenis wajib dipilih');
+        if (kategori.underlying && kategori.underlying.length > 0)
+          throw new BadRequestException('Aset dasar harus kosong');
       }
-
       if (kategori.model === KategoriModel.TANPA_MODEL) {
         if (
           kategori.prinsip ||
           kategori.jenis ||
           (kategori.underlying && kategori.underlying.length > 0)
-        ) {
+        )
           throw new BadRequestException(
-            'Untuk model "tanpa_model", prinsip, jenis, dan aset dasar harus kosong',
+            'Prinsip, jenis, dan aset dasar harus kosong',
           );
-        }
       }
-
       parameter.kategori = {
         model: kategori.model,
         prinsip:
@@ -584,18 +665,13 @@ export class OperasionalService {
 
     try {
       const updated = await this.parameterRepository.save(parameter);
-
+      await this.recalculateSummary(operasionalId);
       await this.operasionalRepository.update(operasionalId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
-      this.logger.log(
-        `updateParameter: Parameter berhasil diupdate - ID: ${updated.id}`,
-      );
       return updated;
     } catch (error: any) {
-      this.logger.error('updateParameter - Error:', error);
       throw error;
     }
   }
@@ -604,36 +680,20 @@ export class OperasionalService {
     operasionalId: number,
     reorderDto: ReorderParametersDto,
   ) {
-    this.logger.log(
-      `reorderParameters: Mengurutkan parameter - Operasional ID: ${operasionalId}`,
-    );
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      for (let i = 0; i < reorderDto.parameterIds.length; i++) {
-        const parameterId = reorderDto.parameterIds[i];
+      for (let i = 0; i < reorderDto.parameterIds.length; i++)
         await queryRunner.manager.update(
           OperasionalParameter,
-          { id: parameterId, operasionalId: operasionalId },
+          { id: reorderDto.parameterIds[i], operasionalId },
           { orderIndex: i },
         );
-      }
-
       await queryRunner.commitTransaction();
-      this.logger.log(
-        `reorderParameters: Parameter berhasil diurutkan - Operasional ID: ${operasionalId}`,
-      );
-
       return { message: 'Parameter berhasil diurutkan' };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `reorderParameters: Error - ${error.message}`,
-        error.stack,
-      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -645,77 +705,55 @@ export class OperasionalService {
     parameterId: number,
     userId: string,
   ) {
-    this.logger.log(`copyParameter: Menyalin parameter - ID: ${parameterId}`);
-
     const originalParam = await this.parameterRepository.findOne({
-      where: { id: parameterId, operasionalId: operasionalId },
+      where: { id: parameterId, operasionalId },
       relations: ['nilaiList'],
     });
-
-    if (!originalParam) {
+    if (!originalParam)
       throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
+        `Parameter ID ${parameterId} tidak ditemukan`,
       );
-    }
 
     const lastParam = await this.parameterRepository.findOne({
-      where: { operasionalId: operasionalId },
+      where: { operasionalId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastParam ? lastParam.orderIndex + 1 : 0;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
       const newParam = this.parameterRepository.create({
         nomor: originalParam.nomor,
         judul: `${originalParam.judul} (Copy)`,
         bobot: originalParam.bobot,
         kategori: originalParam.kategori,
-        operasionalId: operasionalId,
+        operasionalId,
         orderIndex,
       });
-
       const savedParam = await queryRunner.manager.save(
         OperasionalParameter,
         newParam,
       );
-
-      if (originalParam.nilaiList && originalParam.nilaiList.length > 0) {
-        const nilaiPromises = originalParam.nilaiList.map(async (nilai) => {
-          const newNilai = {
-            nomor: nilai.nomor,
-            judul: nilai.judul,
-            bobot: nilai.bobot,
-            portofolio: nilai.portofolio,
-            keterangan: nilai.keterangan,
-            riskindikator: nilai.riskindikator,
+      if (originalParam.nilaiList?.length)
+        for (const nilai of originalParam.nilaiList) {
+          const { id, ...nilaiWithoutId } = nilai;
+          await queryRunner.manager.save(OperasionalNilai, {
+            ...nilaiWithoutId,
             parameterId: savedParam.id,
-            orderIndex: nilai.orderIndex,
-          };
-          return queryRunner.manager.save(OperasionalNilai, newNilai);
-        });
-
-        await Promise.all(nilaiPromises);
-      }
+          });
+        }
 
       await queryRunner.commitTransaction();
-
+      await this.recalculateSummary(operasionalId);
       await this.operasionalRepository.update(operasionalId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
-      this.logger.log(
-        `copyParameter: Parameter berhasil disalin - New ID: ${savedParam.id}`,
-      );
       return savedParam;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`copyParameter: Error - ${error.message}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -727,60 +765,42 @@ export class OperasionalService {
     parameterId: number,
     userId: string,
   ) {
-    this.logger.log(
-      `removeParameter: Menghapus parameter - ID: ${parameterId}`,
-    );
-
     const parameter = await this.parameterRepository.findOne({
-      where: { id: parameterId, operasionalId: operasionalId },
+      where: { id: parameterId, operasionalId },
       relations: ['nilaiList'],
     });
-
-    if (!parameter) {
+    if (!parameter)
       throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
+        `Parameter ID ${parameterId} tidak ditemukan`,
       );
-    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      if (parameter.nilaiList && parameter.nilaiList.length > 0) {
-        await queryRunner.manager.delete(OperasionalNilai, {
-          parameterId: parameterId,
-        });
-      }
-
+      if (parameter.nilaiList?.length)
+        await queryRunner.manager.delete(OperasionalNilai, { parameterId });
       await queryRunner.manager.delete(OperasionalParameter, {
         id: parameterId,
       });
-
       await queryRunner.commitTransaction();
-
+      await this.recalculateSummary(operasionalId);
       await this.operasionalRepository.update(operasionalId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
-      this.logger.log(
-        `removeParameter: Parameter berhasil dihapus - ID: ${parameterId}`,
-      );
       return { message: 'Parameter berhasil dihapus', parameterId };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `removeParameter: Error - ${error.message}`,
-        error.stack,
-      );
       throw error;
     } finally {
       await queryRunner.release();
     }
   }
 
-  // === OPERASI NILAI ===
+  // ============================================
+  // OPERASI NILAI
+  // ============================================
 
   async addNilai(
     operasionalId: number,
@@ -788,37 +808,27 @@ export class OperasionalService {
     createNilaiDto: CreateNilaiDto,
     userId: string,
   ) {
-    this.logger.log(
-      `addNilai: Menambahkan nilai - Parameter ID: ${parameterId}`,
-    );
-
     const parameter = await this.parameterRepository.findOne({
-      where: { id: parameterId, operasionalId: operasionalId },
+      where: { id: parameterId, operasionalId },
     });
-
-    if (!parameter) {
+    if (!parameter)
       throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
+        `Parameter ID ${parameterId} tidak ditemukan`,
       );
-    }
-
-    const judulText = createNilaiDto.judul?.text;
-    if (!judulText || judulText.trim() === '') {
+    if (!createNilaiDto.judul?.text?.trim())
       throw new BadRequestException('Judul nilai wajib diisi');
-    }
 
     const lastNilai = await this.nilaiRepository.findOne({
-      where: { parameterId: parameterId },
+      where: { parameterId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastNilai ? lastNilai.orderIndex + 1 : 0;
 
-    const nilai = {
+    const nilai = this.nilaiRepository.create({
       nomor: createNilaiDto.nomor || '',
       judul: {
         type: createNilaiDto.judul?.type || JudulType.TANPA_FAKTOR,
-        text: judulText.trim(),
+        text: createNilaiDto.judul.text.trim(),
         value: createNilaiDto.judul?.value ?? null,
         pembilang: createNilaiDto.judul?.pembilang || '',
         valuePembilang: createNilaiDto.judul?.valuePembilang ?? null,
@@ -837,21 +847,16 @@ export class OperasionalService {
         moderateToHigh: '',
         high: '',
       },
-      parameterId: parameterId,
+      parameterId,
       orderIndex: createNilaiDto.orderIndex ?? orderIndex,
-    };
-
-    const savedNilai = await this.nilaiRepository.save(nilai);
-
+    });
+    const saved = await this.nilaiRepository.save(nilai);
+    await this.recalculateSummary(operasionalId);
     await this.operasionalRepository.update(operasionalId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(
-      `addNilai: Nilai berhasil ditambahkan - ID: ${savedNilai.id}`,
-    );
-    return savedNilai;
+    return saved;
   }
 
   async updateNilai(
@@ -861,22 +866,14 @@ export class OperasionalService {
     updateNilaiDto: UpdateNilaiDto,
     userId: string,
   ) {
-    this.logger.log(`updateNilai: Mengupdate nilai - ID: ${nilaiId}`);
-
     const nilai = await this.nilaiRepository.findOne({
-      where: { id: nilaiId, parameterId: parameterId },
+      where: { id: nilaiId, parameterId },
       relations: ['parameter'],
     });
-
-    if (!nilai) {
-      throw new NotFoundException(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-    }
-
-    if (nilai.parameter.operasionalId !== operasionalId) {
-      throw new BadRequestException(
-        'Nilai tidak termasuk dalam operasional yang dimaksud',
-      );
-    }
+    if (!nilai)
+      throw new NotFoundException(`Nilai ID ${nilaiId} tidak ditemukan`);
+    if (nilai.parameter.operasionalId !== operasionalId)
+      throw new BadRequestException('Nilai tidak termasuk dalam operasional');
 
     if (updateNilaiDto.nomor !== undefined) nilai.nomor = updateNilaiDto.nomor;
     if (updateNilaiDto.bobot !== undefined) nilai.bobot = updateNilaiDto.bobot;
@@ -886,15 +883,12 @@ export class OperasionalService {
       nilai.keterangan = updateNilaiDto.keterangan;
     if (updateNilaiDto.orderIndex !== undefined)
       nilai.orderIndex = updateNilaiDto.orderIndex;
-
-    if (updateNilaiDto.riskindikator) {
+    if (updateNilaiDto.riskindikator)
       nilai.riskindikator = {
         ...nilai.riskindikator,
         ...updateNilaiDto.riskindikator,
       };
-    }
-
-    if (updateNilaiDto.judul) {
+    if (updateNilaiDto.judul)
       nilai.judul = {
         ...nilai.judul,
         ...updateNilaiDto.judul,
@@ -902,47 +896,31 @@ export class OperasionalService {
           text: updateNilaiDto.judul.text.trim(),
         }),
       };
-    }
 
     const updated = await this.nilaiRepository.save(nilai);
-
+    await this.recalculateSummary(operasionalId);
     await this.operasionalRepository.update(operasionalId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(`updateNilai: Nilai berhasil diupdate - ID: ${updated.id}`);
     return updated;
   }
 
   async reorderNilai(parameterId: number, reorderDto: ReorderNilaiDto) {
-    this.logger.log(
-      `reorderNilai: Mengurutkan nilai - Parameter ID: ${parameterId}`,
-    );
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      for (let i = 0; i < reorderDto.nilaiIds.length; i++) {
-        const nilaiId = reorderDto.nilaiIds[i];
+      for (let i = 0; i < reorderDto.nilaiIds.length; i++)
         await queryRunner.manager.update(
           OperasionalNilai,
-          { id: nilaiId, parameterId: parameterId },
+          { id: reorderDto.nilaiIds[i], parameterId },
           { orderIndex: i },
         );
-      }
-
       await queryRunner.commitTransaction();
-      this.logger.log(
-        `reorderNilai: Nilai berhasil diurutkan - Parameter ID: ${parameterId}`,
-      );
-
       return { message: 'Nilai berhasil diurutkan' };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`reorderNilai: Error - ${error.message}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -955,48 +933,35 @@ export class OperasionalService {
     nilaiId: number,
     userId: string,
   ) {
-    this.logger.log(`copyNilai: Menyalin nilai - ID: ${nilaiId}`);
-
     const originalNilai = await this.nilaiRepository.findOne({
-      where: { id: nilaiId, parameterId: parameterId },
+      where: { id: nilaiId, parameterId },
     });
-
-    if (!originalNilai) {
-      throw new NotFoundException(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-    }
+    if (!originalNilai)
+      throw new NotFoundException(`Nilai ID ${nilaiId} tidak ditemukan`);
 
     const lastNilai = await this.nilaiRepository.findOne({
-      where: { parameterId: parameterId },
+      where: { parameterId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastNilai ? lastNilai.orderIndex + 1 : 0;
 
-    const newNilai = {
-      nomor: originalNilai.nomor,
+    const { id, ...nilaiWithoutId } = originalNilai;
+    const newNilai = this.nilaiRepository.create({
+      ...nilaiWithoutId,
       judul: {
         ...originalNilai.judul,
         text: `${originalNilai.judul?.text || ''} (Copy)`,
       },
-      bobot: originalNilai.bobot,
-      portofolio: originalNilai.portofolio,
-      keterangan: originalNilai.keterangan,
-      riskindikator: originalNilai.riskindikator,
-      parameterId: parameterId,
+      parameterId,
       orderIndex,
-    };
-
-    const savedNilai = await this.nilaiRepository.save(newNilai);
-
+    });
+    const saved = await this.nilaiRepository.save(newNilai);
+    await this.recalculateSummary(operasionalId);
     await this.operasionalRepository.update(operasionalId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(
-      `copyNilai: Nilai berhasil disalin - New ID: ${savedNilai.id}`,
-    );
-    return savedNilai;
+    return saved;
   }
 
   async removeNilai(
@@ -1005,141 +970,97 @@ export class OperasionalService {
     nilaiId: number,
     userId: string,
   ) {
-    this.logger.log(`removeNilai: Menghapus nilai - ID: ${nilaiId}`);
-
     const nilai = await this.nilaiRepository.findOne({
-      where: { id: nilaiId, parameterId: parameterId },
+      where: { id: nilaiId, parameterId },
       relations: ['parameter'],
     });
-
-    if (!nilai) {
-      throw new NotFoundException(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-    }
-
-    if (nilai.parameter.operasionalId !== operasionalId) {
-      throw new BadRequestException(
-        'Nilai tidak termasuk dalam operasional yang dimaksud',
-      );
-    }
+    if (!nilai)
+      throw new NotFoundException(`Nilai ID ${nilaiId} tidak ditemukan`);
+    if (nilai.parameter.operasionalId !== operasionalId)
+      throw new BadRequestException('Nilai tidak termasuk dalam operasional');
 
     await this.nilaiRepository.delete({ id: nilaiId });
-
+    await this.recalculateSummary(operasionalId);
     await this.operasionalRepository.update(operasionalId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(`removeNilai: Nilai berhasil dihapus - ID: ${nilaiId}`);
     return { message: 'Nilai berhasil dihapus', nilaiId };
   }
 
-  // === REFERENCE DATA ===
+  // ============================================
+  // REFERENCE DATA
+  // ============================================
 
   async getReferences(type?: string) {
-    this.logger.debug(
-      `getReferences: Mendapatkan referensi - Type: ${type || 'all'}`,
-    );
-
     const query = this.referenceRepository
       .createQueryBuilder('ref')
       .where('ref.isActive = :isActive', { isActive: true });
-
-    if (type) {
-      query.andWhere('ref.type = :type', { type });
-    }
-
+    if (type) query.andWhere('ref.type = :type', { type });
     query.orderBy('ref.order', 'ASC');
-
     return query.getMany();
   }
 
-  // === VALIDASI TAMBAHAN UNTUK MODEL TERSTRUKTUR ===
-  async validateModelTerstruktur(operasionalId: number): Promise<{
-    isValid: boolean;
-    warnings: string[];
-    errors: string[];
-  }> {
+  // ============================================
+  // VALIDASI MODEL TERSTRUKTUR
+  // ============================================
+
+  async validateModelTerstruktur(
+    operasionalId: number,
+  ): Promise<{ isValid: boolean; warnings: string[]; errors: string[] }> {
     const result = {
       isValid: true,
       warnings: [] as string[],
       errors: [] as string[],
     };
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id: operasionalId },
       relations: ['parameters'],
     });
-
     if (!operasional) {
-      result.errors.push(`Data dengan ID ${operasionalId} tidak ditemukan`);
+      result.errors.push(`Data ID ${operasionalId} tidak ditemukan`);
       result.isValid = false;
       return result;
     }
-
     const terstrukturParams =
       operasional.parameters?.filter(
-        (param) => param.kategori?.model === KategoriModel.TERSTRUKTUR,
+        (p) => p.kategori?.model === KategoriModel.TERSTRUKTUR,
       ) || [];
-
     terstrukturParams.forEach((param) => {
       if (!param.kategori?.prinsip) {
-        result.errors.push(
-          `Parameter "${param.judul}" (model terstruktur) harus memiliki prinsip`,
-        );
+        result.errors.push(`Parameter "${param.judul}" harus memiliki prinsip`);
         result.isValid = false;
       }
-
-      if (
-        !param.kategori?.underlying ||
-        param.kategori.underlying.length === 0
-      ) {
+      if (!param.kategori?.underlying || param.kategori.underlying.length === 0)
         result.warnings.push(
-          `Parameter "${param.judul}" (model terstruktur) tidak memiliki aset dasar`,
+          `Parameter "${param.judul}" tidak memiliki aset dasar`,
         );
-      }
-
       if (param.kategori?.jenis) {
         result.errors.push(
-          `Parameter "${param.judul}" (model terstruktur) seharusnya tidak memiliki jenis`,
+          `Parameter "${param.judul}" seharusnya tidak memiliki jenis`,
         );
         result.isValid = false;
       }
     });
-
-    this.logger.log(
-      `validateModelTerstruktur: Validasi selesai - ${result.errors.length} errors, ${result.warnings.length} warnings`,
-    );
-
     return result;
   }
 
-  // === IMPORT/EXPORT ===
+  // ============================================
+  // IMPORT/EXPORT
+  // ============================================
 
   async exportToExcel(operasionalId: number) {
-    this.logger.log(
-      `exportToExcel: Mengekspor ke Excel - ID: ${operasionalId}`,
-    );
-
     const operasional = await this.operasionalRepository.findOne({
       where: { id: operasionalId },
       relations: ['parameters', 'parameters.nilaiList'],
       order: {
-        parameters: {
-          orderIndex: 'ASC',
-          nilaiList: {
-            orderIndex: 'ASC',
-          },
-        },
+        parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
       },
     });
+    if (!operasional)
+      throw new NotFoundException(`Data ID ${operasionalId} tidak ditemukan`);
 
-    if (!operasional) {
-      throw new NotFoundException(
-        `Data dengan ID ${operasionalId} tidak ditemukan`,
-      );
-    }
-
-    const exportData = {
+    return {
       metadata: {
         year: operasional.year,
         quarter: operasional.quarter,
@@ -1172,24 +1093,15 @@ export class OperasionalService {
             })) || [],
         })) || [],
     };
-
-    this.logger.log(
-      `exportToExcel: Data berhasil diekspor - Jumlah parameter: ${exportData.metadata.totalParameters}`,
-    );
-    return exportData;
   }
 
   async importFromExcel(importData: any, userId: string) {
-    this.logger.log('importFromExcel: Mengimpor data dari Excel');
-
-    if (!importData.parameters || !Array.isArray(importData.parameters)) {
+    if (!importData.parameters || !Array.isArray(importData.parameters))
       throw new BadRequestException('Format data tidak valid');
-    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
       await queryRunner.manager.update(
         Operasional,
@@ -1200,12 +1112,15 @@ export class OperasionalService {
       const operasional = {
         year: importData.metadata?.year || new Date().getFullYear(),
         quarter: importData.metadata?.quarter || 1,
-        summary: importData.summary,
+        summary: importData.summary || {
+          totalWeighted: 0,
+          summaryBg: 'bg-gray-400 text-black',
+          computedAt: new Date(),
+        },
         isActive: true,
         createdBy: userId,
         updatedBy: userId,
       };
-
       const savedOperasional = await queryRunner.manager.save(
         Operasional,
         operasional,
@@ -1213,7 +1128,6 @@ export class OperasionalService {
 
       for (let i = 0; i < importData.parameters.length; i++) {
         const paramData = importData.parameters[i];
-
         const parameter = {
           nomor: paramData.nomor || '',
           judul: paramData.judul || '',
@@ -1227,7 +1141,6 @@ export class OperasionalService {
           operasionalId: savedOperasional.id,
           orderIndex: paramData.orderIndex || i,
         };
-
         const savedParam = await queryRunner.manager.save(
           OperasionalParameter,
           parameter,
@@ -1236,8 +1149,7 @@ export class OperasionalService {
         if (paramData.nilaiList && Array.isArray(paramData.nilaiList)) {
           for (let j = 0; j < paramData.nilaiList.length; j++) {
             const nilaiData = paramData.nilaiList[j];
-
-            const nilai = {
+            await queryRunner.manager.save(OperasionalNilai, {
               nomor: nilaiData.nomor || '',
               judul: nilaiData.judul || {
                 type: JudulType.TANPA_FAKTOR,
@@ -1262,25 +1174,15 @@ export class OperasionalService {
               },
               parameterId: savedParam.id,
               orderIndex: nilaiData.orderIndex || j,
-            };
-
-            await queryRunner.manager.save(OperasionalNilai, nilai);
+            });
           }
         }
       }
-
       await queryRunner.commitTransaction();
-
-      this.logger.log(
-        `importFromExcel: Data berhasil diimpor - ID: ${savedOperasional.id}, Jumlah parameter: ${importData.parameters.length}`,
-      );
+      await this.recalculateSummary(savedOperasional.id);
       return savedOperasional;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `importFromExcel: Error - ${error.message}`,
-        error.stack,
-      );
       throw error;
     } finally {
       await queryRunner.release();

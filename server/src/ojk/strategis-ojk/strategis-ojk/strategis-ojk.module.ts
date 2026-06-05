@@ -1,23 +1,24 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { StrategisOjkService } from './strategis-ojk.service';
-import { StrategisOjkController } from './strategis-ojk.controller';
-import { StrategisOjk } from './entities/strategis-ojk.entity';
-import { StrategisParameter } from './entities/strategis-paramater.entity';
+
+import { StrategisController } from './strategis-ojk.controller';
+import { Strategis } from './entities/strategis-ojk.entity';
+import { StrategisParameter } from './entities/strategis-parameter.entity';
 import { StrategisNilai } from './entities/strategis-nilai.entity';
 import { StrategisReference } from './entities/strategis-inherent-references.entity';
+import { StrategisService } from './strategis-ojk.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      StrategisOjk,
+      Strategis,
       StrategisParameter,
       StrategisNilai,
       StrategisReference,
     ]),
   ],
-  controllers: [StrategisOjkController],
-  providers: [StrategisOjkService],
-  exports: [StrategisOjkService],
+  controllers: [StrategisController],
+  providers: [StrategisService],
+  exports: [StrategisService],
 })
 export class StrategisOjkModule {}

@@ -16,15 +16,9 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { ReputasiService } from './reputasi.service';
 import { CreateReputasiSectionDto } from './dto/create-reputasi-section.dto';
 import { UpdateReputasiSectionDto } from './dto/update-reputasi-section.dto';
-import { Quarter } from './entities/reputasi.entity';
 import { CreateReputasiDto } from './dto/create-reputasi.dto';
 import { UpdateReputasiDto } from './dto/update-reputasi.dto';
-// import { ReputasiService } from './services/reputasi.service';
-// import { CreateReputasiSectionDto } from './dto/create-reputasi-section.dto';
-// import { UpdateReputasiSectionDto } from './dto/update-reputasi-section.dto';
-// import { CreateReputasiDto } from './dto/create-reputasi.dto';
-// import { UpdateReputasiDto } from './dto/update-reputasi.dto';
-// import { Quarter } from './entities/reputasi.entity';
+import { Quarter } from './entities/reputasi.entity';
 
 @ApiTags('Reputasi')
 @Controller('reputasi')
@@ -36,6 +30,8 @@ export class ReputasiController {
   @Post('sections')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new reputasi section' })
+  @ApiResponse({ status: 201, description: 'Section created successfully' })
+  @ApiResponse({ status: 409, description: 'Section already exists' })
   async createSection(@Body() createDto: CreateReputasiSectionDto) {
     return await this.reputasiService.createSection(createDto);
   }
@@ -53,6 +49,17 @@ export class ReputasiController {
     return await this.reputasiService.findSectionById(id);
   }
 
+  @Get('sections/period')
+  @ApiOperation({ summary: 'Get reputasi sections by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.reputasiService.findSectionsByPeriod(year, quarter);
+  }
+
   @Put('sections/:id')
   @ApiOperation({ summary: 'Update reputasi section' })
   async updateSection(
@@ -63,23 +70,10 @@ export class ReputasiController {
   }
 
   @Delete('sections/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete reputasi section' })
   async deleteSection(@Param('id', ParseIntPipe) id: number) {
-    await this.reputasiService.deleteSection(id);
-  }
-
-  @Get('indikators/sections-by-period')
-  @ApiOperation({ summary: 'Get sections with indicators by period' })
-  async getSectionsWithIndicatorsByPeriod(
-    @Query('year', new ParseIntPipe()) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return await this.reputasiService.getSectionsWithIndicatorsByPeriod(
-      year,
-      quarter,
-    );
+    return await this.reputasiService.deleteSection(id);
   }
 
   // ========== INDIKATOR ENDPOINTS ==========
@@ -87,6 +81,8 @@ export class ReputasiController {
   @Post('indikators')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create new reputasi indikator' })
+  @ApiResponse({ status: 201, description: 'Indikator created successfully' })
+  @ApiResponse({ status: 409, description: 'Indikator already exists' })
   async createIndikator(@Body() createDto: CreateReputasiDto) {
     return await this.reputasiService.createIndikator(createDto);
   }
@@ -137,15 +133,35 @@ export class ReputasiController {
   }
 
   @Delete('indikators/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete reputasi indikator' })
   async deleteIndikator(@Param('id', ParseIntPipe) id: number) {
-    await this.reputasiService.deleteIndikator(id);
+    return await this.reputasiService.deleteIndikator(id);
+  }
+
+  // ========== COMPLEX QUERIES ENDPOINTS ==========
+
+  @Get('data/with-indicators')
+  @ApiOperation({
+    summary: 'Get sections with their indicators for a period',
+    description:
+      'Returns sections with nested indicators for a specific year and quarter',
+  })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getSectionsWithIndicatorsByPeriod(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    return await this.reputasiService.getSectionsWithIndicatorsByPeriod(
+      year,
+      quarter,
+    );
   }
 
   @Get('total-weighted')
-  @ApiOperation({ summary: 'Get total weighted by period' })
-  @ApiQuery({ name: 'year', required: true })
+  @ApiOperation({ summary: 'Get total weighted value by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
   async getTotalWeighted(
     @Query('year', ParseIntPipe) year: number,
@@ -155,18 +171,12 @@ export class ReputasiController {
       year,
       quarter,
     );
-    return { total };
-  }
-
-  @Get('sections/period')
-  @ApiOperation({ summary: 'Get reputasi sections by period' })
-  @ApiQuery({ name: 'year', required: true, type: Number })
-  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
-  async getSectionsByPeriod(
-    @Query('year', ParseIntPipe) year: number,
-    @Query('quarter') quarter: Quarter,
-  ) {
-    return await this.reputasiService.findSectionsByPeriod(year, quarter);
+    return {
+      success: true,
+      year,
+      quarter,
+      total,
+    };
   }
 
   @Get('periods')
@@ -188,12 +198,12 @@ export class ReputasiController {
     }
   }
 
-  @Get('all-periods')
+  @Get('periods/with-counts')
   @ApiOperation({
-    summary: 'Get all periods with count',
-    description: 'Get periods with indicator counts',
+    summary: 'Get all periods with indicator counts',
+    description: 'Get periods with indicator counts for each period',
   })
-  async getAllPeriods() {
+  async getAllPeriodsWithCounts() {
     try {
       const periods = await this.reputasiService.getPeriods();
 
@@ -216,14 +226,38 @@ export class ReputasiController {
         count: periodsWithCounts.length,
       };
     } catch (error) {
-      console.error('Error in getAllPeriods:', error);
+      console.error('Error in getAllPeriodsWithCounts:', error);
       throw error;
     }
   }
 
+  @Get('indikators/count')
+  @ApiOperation({ summary: 'Get indikator count by period' })
+  @ApiQuery({ name: 'year', required: true, type: Number })
+  @ApiQuery({ name: 'quarter', required: true, enum: Quarter })
+  async getIndikatorCount(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('quarter') quarter: Quarter,
+  ) {
+    const count = await this.reputasiService.getIndikatorCountByPeriod(
+      year,
+      quarter,
+    );
+    return {
+      success: true,
+      year,
+      quarter,
+      count,
+    };
+  }
+
+  // ========== DUPLICATION ENDPOINT ==========
   @Post('indikators/:id/duplicate')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Duplicate indikator to new period' })
+  @ApiOperation({
+    summary: 'Duplicate indikator to new period',
+    description: 'Copy an existing indikator to a different period',
+  })
   async duplicateIndikator(
     @Param('id', ParseIntPipe) id: number,
     @Query('year', ParseIntPipe) year: number,

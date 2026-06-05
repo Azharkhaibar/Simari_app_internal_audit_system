@@ -1,9 +1,8 @@
-// src/services/api.service.ts (tambahkan endpoint operasional)
+// services/api-operasional.service.ts
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:5530/api/v1';
 
-// Buat instance axios untuk strateji
 // Buat instance axios untuk operasional
 export const api_operasional = axios.create({
   baseURL: API_BASE_URL,
@@ -13,7 +12,7 @@ export const api_operasional = axios.create({
   timeout: 10000,
 });
 
-// Interceptor untuk operasional
+// Interceptor untuk logging error
 api_operasional.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
@@ -24,6 +23,7 @@ api_operasional.interceptors.response.use(
       data: error.response?.data,
     });
 
+    // Throw error dengan pesan yang lebih jelas
     if (error.response?.data) {
       const data = error.response.data as any;
       if (data.message) {
@@ -44,7 +44,7 @@ api_operasional.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
-export default { api_operasional };
+export default api_operasional;

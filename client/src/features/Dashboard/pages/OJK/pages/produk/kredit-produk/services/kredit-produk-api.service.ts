@@ -1,4 +1,4 @@
-// services/kredit-produk.api.service.ts
+// services/kredit.api.service.ts
 import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:5530/api/v1';

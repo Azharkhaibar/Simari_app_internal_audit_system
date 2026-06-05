@@ -10,8 +10,10 @@ import {
 } from 'typeorm';
 import { RentabilitasParameter } from './rentabilitas-parameter.entity';
 
-@Entity('rentabilitas_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
+@Entity('rentabilitas_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class RentabilitasNilai {
   @PrimaryGeneratedColumn()
   id: number;
@@ -50,7 +52,6 @@ export class RentabilitasNilai {
     high?: string;
   };
 
-  // Foreign key ke Parameter
   @Column({ name: 'parameter_id' })
   parameterId: number;
 

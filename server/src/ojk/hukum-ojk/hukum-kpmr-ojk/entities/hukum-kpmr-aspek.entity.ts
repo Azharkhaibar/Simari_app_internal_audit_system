@@ -9,7 +9,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { KpmrHukum } from './hukum-kpmr-ojk.entity';
+import { KpmrHukumOjk } from './hukum-kpmr-ojk.entity';
 import { KpmrPertanyaanHukum } from './hukum-kpmr-pertanyaan.entity';
 
 @Entity('kpmr_aspek_hukum')
@@ -36,11 +36,11 @@ export class KpmrAspekHukum {
   @Column({ name: 'kpmr_id' })
   kpmrId: number;
 
-  @ManyToOne(() => KpmrHukum, (kpmr) => kpmr.aspekList, {
+  @ManyToOne(() => KpmrHukumOjk, (kpmr) => kpmr.aspekList, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'kpmr_id' })
-  kpmr: KpmrHukum;
+  kpmr: KpmrHukumOjk;
 
   @OneToMany(() => KpmrPertanyaanHukum, (pertanyaan) => pertanyaan.aspek, {
     cascade: true,

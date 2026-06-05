@@ -80,8 +80,8 @@ const COLORS = {
  *   groupBySection?: boolean,
  * }} options
  */
-export function exportInvestasiToExcel(filteredRows, viewYear, viewQuarter, options = {}) {
-  const { sheetName = `${viewYear}-${viewQuarter}`, filePrefix = 'FORM-INVESTASI', summaryLabel = 'Summary', groupBySection = false } = options;
+export function exportLikuiditasToExcel(filteredRows, viewYear, viewQuarter, options = {}) {
+  const { sheetName = `${viewYear}-${viewQuarter}`, filePrefix = 'FORM-LIKUIDITAS', summaryLabel = 'Summary', groupBySection = true } = options;
 
   const headers1 = ['No', 'Bobot', 'Parameter atau Indikator', '', '', 'Bobot', 'Sumber Risiko', 'Dampak', 'Low', '', 'Moderate', 'Moderate to High', 'High', 'Hasil', 'Peringkat', 'Weighted', 'Keterangan'];
   const headers2 = ['', '', 'Section', '', 'Indikator', '', '', '', '', '', '', '', '', '', '', '', ''];

@@ -1,753 +1,1230 @@
-// src/ojk/kepatuhan-produk/hooks/inherent/kepatuhan.hook.ts
+// src/ojk/kepatuhan-produk/hook/inherent/kepatuhan.hook.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useToast } from '../../components/use-toast';
-import kepatuhanService from '../../services/inherent/kepatuhan.service';
-import { KepatuhanOjkEntity, ParameterEntity, NilaiEntity, CreateParameterDto, UpdateParameterDto, CreateNilaiDto, UpdateNilaiDto } from '../../services/inherent/kepatuhan.service';
+import kepatuhanProdukService, { CreateNilaiDto, CreateParameterDto, KepatuhanProdukOjkEntity, UpdateNilaiDto, UpdateParameterDto } from '../../services/inherent/kepatuhan.service';
 
-interface UseKepatuhanInherentReturn {
-  // State
-  kepatuhan: KepatuhanOjkEntity | null;
-  parameters: ParameterEntity[];
-  loading: boolean;
-  saving: boolean;
-  error: string | null;
-  currentKepatuhanId: number | null;
-
-  // Data operations
-  loadByYearQuarter: (year: number, quarter: number) => Promise<void>;
-  refreshData: () => Promise<ParameterEntity[]>;
-  createKepatuhan: (year: number, quarter: number) => Promise<KepatuhanOjkEntity | null>;
-
-  // Parameter operations
-  addParameter: (kepatuhanId: number, parameterData: CreateParameterDto) => Promise<ParameterEntity>;
-  updateParameter: (parameterId: number, parameterData: UpdateParameterDto) => Promise<ParameterEntity>;
-  deleteParameter: (parameterId: number) => Promise<void>;
-  copyParameter: (kepatuhanId: number, parameterId: number) => Promise<void>;
-  reorderParameters: (kepatuhanId: number, parameterIds: number[]) => Promise<void>;
-
-  // Nilai operations
-  addNilai: (kepatuhanId: number, parameterId: number, nilaiData: CreateNilaiDto) => Promise<NilaiEntity>;
-  updateNilai: (nilaiId: number, nilaiData: UpdateNilaiDto) => Promise<NilaiEntity>;
-  deleteNilai: (nilaiId: number) => Promise<void>;
-  copyNilai: (kepatuhanId: number, parameterId: number, nilaiId: number) => Promise<void>;
-  reorderNilai: (kepatuhanId: number, parameterId: number, nilaiIds: number[]) => Promise<void>;
-
-  // Utility
-  getParametersByKepatuhanId: (kepatuhanId: number) => ParameterEntity[];
-  getNilaiByParameterId: (parameterId: number) => NilaiEntity[];
-
-  // Status
-  hasData: boolean;
-  isReady: boolean;
-  hasError: boolean;
-}
-
-export function useKepatuhanInherent(): UseKepatuhanInherentReturn {
-  const { toast } = useToast();
-
-  const [kepatuhan, setKepatuhan] = useState<KepatuhanOjkEntity | null>(null);
-  const [parameters, setParameters] = useState<ParameterEntity[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+export const useKepatuhanProdukIntegration = (initialYear?: number, initialQuarter?: number) => {
+  // State untuk data yang sedang aktif
+  const [rows, setRows] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentKepatuhanId, setCurrentKepatuhanId] = useState<number | null>(null);
+  const [currentInherentId, setCurrentInherentId] = useState<number | null>(null);
+  const [currentInherentData, setCurrentInherentData] = useState<KepatuhanProdukOjkEntity | null>(null);
+  const [year, setYear] = useState<number | null>(initialYear ?? null);
+  const [quarter, setQuarter] = useState<number | null>(initialQuarter ?? null);
 
-  const loadingRef = useRef(false);
+  // State untuk track quarter yang sedang aktif
+  const [activePeriodKey, setActivePeriodKey] = useState<string>('');
+
+  // Cache untuk menyimpan data per year-quarter
+  const cacheRef = useRef<
+    Map<
+      string,
+      {
+        rows: any[];
+        inherentId: number | null;
+        entity: KepatuhanProdukOjkEntity | null;
+        timestamp: number;
+      }
+    >
+  >(new Map());
+
+  // State untuk tracking loading per year-quarter
+  const loadingQueueRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
-  const lastLoadedYearRef = useRef<{ year: number; quarter: number } | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      loadingRef.current = false;
+      cacheRef.current.clear();
+      loadingQueueRef.current.clear();
     };
   }, []);
 
-  const safeSet = <T,>(setter: (v: T) => void, value: T) => {
+  const safeSet = <T>(setter: (v: T) => void, value: T) => {
     if (mountedRef.current) setter(value);
   };
 
-  // ========== LOAD DATA ==========
-  const loadByYearQuarter = useCallback(
-    async (targetYear: number, targetQuarter: number) => {
-      if (lastLoadedYearRef.current?.year === targetYear && lastLoadedYearRef.current?.quarter === targetQuarter && kepatuhan !== null) {
-        console.log(`✅ [Hook] Data inherent untuk ${targetYear} Q${targetQuarter} sudah dimuat`);
-        return;
-      }
+  // ==============================
+  // FUNGSI BARU: getOrCreateData
+  // ==============================
 
-      if (loadingRef.current) {
-        console.log('⏳ [Hook] Loading already in progress...');
-        return;
-      }
+  /**
+   * Fungsi utama untuk mendapatkan atau membuat data
+   * Menggunakan findOrCreate dari service
+   */
+  const getOrCreateData = useCallback(async (targetYear: number, targetQuarter: number, forceReload = false) => {
+    console.log(`[Hook] getOrCreateData: ${targetYear}-Q${targetQuarter}, force: ${forceReload}`);
 
-      loadingRef.current = true;
-      safeSet(setLoading, true);
-      safeSet(setError, null);
+    const cacheKey = getCacheKey(targetYear, targetQuarter);
 
-      try {
-        console.log(`📥 [Hook] Loading inherent data for ${targetYear} Q${targetQuarter}`);
-
-        const data = await kepatuhanService.loadOrCreate(targetYear, targetQuarter);
-
-        if (!mountedRef.current) return;
-
-        safeSet(setKepatuhan, data);
-        safeSet(setCurrentKepatuhanId, data.id);
-
-        const params = Array.isArray(data.parameters) ? data.parameters : [];
-        safeSet(setParameters, params);
-
-        lastLoadedYearRef.current = { year: targetYear, quarter: targetQuarter };
-
-        console.log(`✅ [Hook] Loaded ${params.length} parameters`);
-      } catch (err: any) {
-        if (!mountedRef.current) return;
-
-        const errorMsg = err.message || 'Gagal memuat data inherent';
-        safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-      } finally {
-        loadingRef.current = false;
-        safeSet(setLoading, false);
-      }
-    },
-    [toast, kepatuhan],
-  );
-
-  // ========== CREATE KEPATUHAN ==========
-  const createKepatuhan = useCallback(
-    async (year: number, quarter: number): Promise<KepatuhanOjkEntity | null> => {
-      if (loadingRef.current) {
-        console.log('⏳ [Hook] Create already in progress...');
-        return null;
-      }
-
-      loadingRef.current = true;
-      safeSet(setSaving, true);
-      safeSet(setError, null);
-
-      try {
-        const yearNum = Number(year);
-        const quarterNum = Number(quarter);
-
-        if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
-          throw new Error(`Tahun tidak valid: ${year}`);
-        }
-
-        if (isNaN(quarterNum) || quarterNum < 1 || quarterNum > 4) {
-          throw new Error(`Quarter tidak valid: ${quarter}`);
-        }
-
-        const payload = {
-          year: yearNum,
-          quarter: quarterNum,
-          isActive: true,
-          version: '1.0.0',
-          createdBy: 'system',
-        };
-
-        console.log('📦 [Hook] Creating inherent data:', payload);
-
-        const data = await kepatuhanService.create(payload);
-
-        if (!mountedRef.current) return null;
-
-        if (!data || !data.id) {
-          throw new Error('Data tidak valid setelah dibuat');
-        }
-
-        safeSet(setKepatuhan, data);
-        safeSet(setCurrentKepatuhanId, data.id);
-
-        const params = Array.isArray(data.parameters) ? data.parameters : [];
-        safeSet(setParameters, params);
-
-        lastLoadedYearRef.current = { year: yearNum, quarter: quarterNum };
-
-        toast({
-          title: 'Berhasil',
-          description: `Data inherent untuk tahun ${yearNum} Q${quarterNum} berhasil dibuat`,
-        });
-
-        return data;
-      } catch (err: any) {
-        if (!mountedRef.current) return null;
-
-        const errorMsg = err.message || 'Gagal membuat data inherent';
-        safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        return null;
-      } finally {
-        loadingRef.current = false;
-        safeSet(setSaving, false);
-      }
-    },
-    [toast],
-  );
-
-  // ========== REFRESH DATA ==========
-  const refreshData = useCallback(async (): Promise<ParameterEntity[]> => {
-    if (!kepatuhan?.id) return [];
-
-    if (loadingRef.current) {
-      console.log('⏳ [Hook] Refresh already in progress...');
-      return parameters;
+    // Skip jika sudah loading
+    if (loadingQueueRef.current.has(cacheKey) && !forceReload) {
+      console.log(`[Hook] Load already in progress for ${cacheKey}`);
+      return null;
     }
 
-    loadingRef.current = true;
-    safeSet(setLoading, true);
+    loadingQueueRef.current.add(cacheKey);
 
     try {
-      const freshData = await kepatuhanService.getById(kepatuhan.id);
+      // Gunakan findOrCreate dari service
+      const result = await kepatuhanProdukService.findOrCreate(targetYear, targetQuarter);
 
-      if (!mountedRef.current) return [];
-
-      safeSet(setKepatuhan, freshData);
-
-      const params = Array.isArray(freshData.parameters) ? freshData.parameters : [];
-      safeSet(setParameters, params);
-
-      return params;
-    } catch (error: any) {
-      if (mountedRef.current) {
-        toast({
-          title: 'Error',
-          description: error.message || 'Gagal memperbarui data',
-          variant: 'destructive',
-        });
+      if (!result.success) {
+        throw new Error(result.message);
       }
-      return parameters;
+
+      if (!result.data) {
+        throw new Error('Data tidak ditemukan dan gagal dibuat');
+      }
+
+      // Format data untuk frontend
+      const formattedRows = kepatuhanProdukService.formatToFrontend(result.data);
+
+      // Update cache
+      updateCache(targetYear, targetQuarter, {
+        rows: formattedRows,
+        inherentId: result.data.id,
+        entity: result.data,
+      });
+
+      return {
+        rows: formattedRows,
+        inherentId: result.data.id,
+        entity: result.data,
+        isNew: result.isNew,
+      };
+    } catch (error: any) {
+      console.error(`[Hook] Error in getOrCreateData for ${cacheKey}:`, error);
+      throw error;
     } finally {
-      loadingRef.current = false;
-      safeSet(setLoading, false);
+      loadingQueueRef.current.delete(cacheKey);
     }
-  }, [kepatuhan?.id, parameters, toast]);
+  }, []);
 
-  // ========== PARAMETER OPERATIONS ==========
-  const addParameter = useCallback(
-    async (kepatuhanId: number, parameterData: CreateParameterDto): Promise<ParameterEntity> => {
-      if (saving) throw new Error('Already saving');
+  /* =======================
+     HELPER: Cache management
+  ======================= */
 
-      safeSet(setSaving, true);
-      safeSet(setError, null);
+  const getCacheKey = useCallback((y: number, q: number) => {
+    return `${y}-Q${q}`;
+  }, []);
 
-      try {
-        if (!kepatuhanId) throw new Error('ID Kepatuhan tidak boleh kosong');
-        if (!parameterData.judul?.trim()) throw new Error('Judul parameter tidak boleh kosong');
+  const getCurrentCacheKey = useCallback(() => {
+    if (!year || !quarter) return null;
+    return getCacheKey(year, quarter);
+  }, [year, quarter, getCacheKey]);
 
-        const bobotNum = Number(parameterData.bobot);
-        if (isNaN(bobotNum) || bobotNum < 0 || bobotNum > 100) {
-          throw new Error('Bobot harus antara 0 dan 100');
+  const updateCache = useCallback(
+    (y: number, q: number, data: { rows: any[]; inherentId: number | null; entity: KepatuhanProdukOjkEntity | null }) => {
+      const key = getCacheKey(y, q);
+      const cacheEntry = {
+        rows: data.rows,
+        inherentId: data.inherentId,
+        entity: data.entity,
+        timestamp: Date.now(),
+      };
+      cacheRef.current.set(key, cacheEntry);
+      console.log(`[Hook] Cache updated for ${key}:`, {
+        rowsCount: data.rows.length,
+        inherentId: data.inherentId,
+        hasEntity: !!data.entity,
+      });
+    },
+    [getCacheKey],
+  );
+
+  const getFromCache = useCallback(
+    (y: number, q: number) => {
+      const key = getCacheKey(y, q);
+      const cached = cacheRef.current.get(key);
+      if (cached) {
+        console.log(`[Hook] Cache hit for ${key}:`, {
+          rowsCount: cached.rows.length,
+          age: Date.now() - cached.timestamp,
+        });
+      } else {
+        console.log(`[Hook] Cache miss for ${key}`);
+      }
+      return cached;
+    },
+    [getCacheKey],
+  );
+
+  const clearCache = useCallback(
+    (y?: number, q?: number) => {
+      if (y !== undefined && q !== undefined) {
+        const key = getCacheKey(y, q);
+        const deleted = cacheRef.current.delete(key);
+        console.log(`[Hook] Cache cleared for ${key}: ${deleted ? 'success' : 'not found'}`);
+      } else {
+        const size = cacheRef.current.size;
+        cacheRef.current.clear();
+        console.log(`[Hook] All cache cleared (${size} entries)`);
+      }
+    },
+    [getCacheKey],
+  );
+
+  /* =======================
+     VALIDATION HELPERS
+  ======================= */
+
+  const validateKategori = useCallback((kategori: any): { isValid: boolean; error?: string } => {
+    if (!kategori) {
+      return { isValid: false, error: 'Kategori tidak boleh kosong' };
+    }
+
+    const { model, prinsip, jenis, underlying } = kategori;
+
+    const validModels = ['tanpa_model', 'open_end', 'terstruktur'];
+    if (!model || !validModels.includes(model)) {
+      return { isValid: false, error: `Model harus salah satu dari: ${validModels.join(', ')}` };
+    }
+
+    if (model === 'tanpa_model') {
+      if (prinsip || jenis || (Array.isArray(underlying) && underlying.length > 0)) {
+        return { isValid: false, error: 'Untuk model "tanpa_model", prinsip, jenis, dan aset dasar harus kosong' };
+      }
+      return { isValid: true };
+    }
+
+    const validPrinsip = ['syariah', 'konvensional'];
+    if (!prinsip || !validPrinsip.includes(prinsip)) {
+      return { isValid: false, error: `Prinsip harus salah satu dari: ${validPrinsip.join(', ')}` };
+    }
+
+    if (model === 'open_end') {
+      const validJenis = ['pasar_uang', 'pendapatan_tetap', 'campuran', 'saham', 'indeks', 'terproteksi'];
+      if (!jenis || !validJenis.includes(jenis)) {
+        return { isValid: false, error: `Jenis harus salah satu dari: ${validJenis.join(', ')}` };
+      }
+      if (Array.isArray(underlying) && underlying.length > 0) {
+        return { isValid: false, error: 'Untuk model "open_end", aset dasar harus kosong' };
+      }
+    }
+
+    if (model === 'terstruktur') {
+      if (jenis) {
+        return { isValid: false, error: 'Untuk model "terstruktur", jenis harus kosong' };
+      }
+      if (Array.isArray(underlying)) {
+        const validUnderlying = ['indeks', 'eba', 'dinfra', 'obligasi'];
+        const invalidValues = underlying.filter((v: string) => !validUnderlying.includes(v));
+        if (invalidValues.length > 0) {
+          return { isValid: false, error: `Aset dasar tidak valid: ${invalidValues.join(', ')}` };
         }
+      }
+    }
 
-        const payload: CreateParameterDto = {
-          nomor: parameterData.nomor || '',
-          judul: parameterData.judul.trim(),
-          bobot: bobotNum,
-          kategori: parameterData.kategori || {},
-          orderIndex: parameterData.orderIndex || 0,
+    return { isValid: true };
+  }, []);
+
+  const validateParameterJudul = useCallback((judul: any): { isValid: boolean; error?: string } => {
+    if (!judul || typeof judul !== 'string' || judul.trim() === '') {
+      return { isValid: false, error: 'Judul parameter tidak boleh kosong' };
+    }
+    return { isValid: true };
+  }, []);
+
+  const validateBobot = useCallback((bobot: any): { isValid: boolean; error?: string; value: number } => {
+    const num = Number(bobot);
+    if (isNaN(num)) {
+      return { isValid: false, error: 'Bobot harus berupa angka', value: 0 };
+    }
+    if (num < 0 || num > 100) {
+      return { isValid: false, error: 'Bobot harus antara 0 dan 100', value: num };
+    }
+    return { isValid: true, value: num };
+  }, []);
+
+  /* =======================
+     FORMATTING HELPERS
+  ======================= */
+
+  const formatParameterJudul = useCallback(
+    (judul: any): string => {
+      const validation = validateParameterJudul(judul);
+      if (!validation.isValid) {
+        throw new Error(validation.error || 'Judul tidak valid');
+      }
+      return kepatuhanProdukService.formatParameterJudul(judul);
+    },
+    [validateParameterJudul],
+  );
+
+  const formatNilaiJudul = useCallback((judul: any): CreateNilaiDto['judul'] => {
+    return kepatuhanProdukService.formatNilaiJudul(judul);
+  }, []);
+
+  const formatBobot = useCallback(
+    (bobot: any): number => {
+      const validation = validateBobot(bobot);
+      if (!validation.isValid) {
+        return 0;
+      }
+      return validation.value;
+    },
+    [validateBobot],
+  );
+
+  const formatKategori = useCallback(
+    (kategori: any) => {
+      if (!kategori) {
+        return {
+          model: '',
+          prinsip: '',
+          jenis: '',
+          underlying: [],
+        };
+      }
+
+      if (typeof kategori === 'object') {
+        const cleanKategori = {
+          model: kategori.model || '',
+          prinsip: kategori.prinsip || '',
+          jenis: kategori.jenis || '',
+          underlying: Array.isArray(kategori.underlying) ? kategori.underlying.filter(Boolean) : [],
         };
 
-        console.log('📦 [Hook] Adding parameter:', payload);
-
-        const updatedKepatuhan = await kepatuhanService.addParameter(kepatuhanId, payload);
-
-        if (!mountedRef.current) throw new Error('Component unmounted');
-
-        safeSet(setKepatuhan, updatedKepatuhan);
-
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
-
-        const newParameter = params.find((p) => p.judul === payload.judul && p.bobot === payload.bobot);
-
-        toast({
-          title: 'Berhasil',
-          description: 'Parameter berhasil ditambahkan',
-        });
-
-        return newParameter || params[params.length - 1];
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal menambahkan parameter';
-        safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
-      }
-    },
-    [saving, toast],
-  );
-
-  const updateParameter = useCallback(
-    async (parameterId: number, parameterData: UpdateParameterDto): Promise<ParameterEntity> => {
-      if (saving) throw new Error('Already saving');
-      if (!kepatuhan?.id) throw new Error('Tidak ada data kepatuhan yang dipilih');
-
-      safeSet(setSaving, true);
-      safeSet(setError, null);
-
-      try {
-        if (parameterData.judul !== undefined && !parameterData.judul.trim()) {
-          throw new Error('Judul parameter tidak boleh kosong');
+        const validation = validateKategori(cleanKategori);
+        if (!validation.isValid && cleanKategori.model) {
+          console.warn('[Hook] Invalid kategori:', validation.error);
         }
 
-        if (parameterData.bobot !== undefined) {
-          const bobotNum = Number(parameterData.bobot);
-          if (isNaN(bobotNum) || bobotNum < 0 || bobotNum > 100) {
-            throw new Error('Bobot harus antara 0 dan 100');
+        return cleanKategori;
+      }
+
+      return {
+        model: '',
+        prinsip: '',
+        jenis: '',
+        underlying: [],
+      };
+    },
+    [validateKategori],
+  );
+
+  /* =======================
+     LOAD DATA per Year-Quarter - PERBAIKAN UTAMA
+  ======================= */
+
+  const loadData = useCallback(
+    async (loadYear: number, loadQuarter: number, forceReload = false) => {
+      const cacheKey = getCacheKey(loadYear, loadQuarter);
+      console.log(`[Hook] loadData: ${cacheKey}`);
+
+      if (!loadYear || !loadQuarter || loadQuarter < 1 || loadQuarter > 4) {
+        if (year === loadYear && quarter === loadQuarter) {
+          safeSet(setRows, []);
+          safeSet(setError, 'Year/quarter tidak valid');
+        }
+        return [];
+      }
+
+      // Cegah double loading
+      if (loadingQueueRef.current.has(cacheKey) && !forceReload) {
+        const cached = getFromCache(loadYear, loadQuarter);
+        return cached?.rows || [];
+      }
+
+      loadingQueueRef.current.add(cacheKey);
+
+      const isActivePeriod = year === loadYear && quarter === loadQuarter;
+
+      if (isActivePeriod) {
+        safeSet(setRows, []);
+        safeSet(setError, null);
+      }
+      safeSet(setIsLoading, true);
+
+      // Cek cache
+      if (!forceReload) {
+        const cached = getFromCache(loadYear, loadQuarter);
+        if (cached) {
+          if (isActivePeriod) {
+            safeSet(setRows, cached.rows);
+            safeSet(setCurrentInherentId, cached.inherentId);
+            safeSet(setCurrentInherentData, cached.entity);
+            safeSet(setIsLoading, false);
           }
-          parameterData.bobot = bobotNum;
+          loadingQueueRef.current.delete(cacheKey);
+          return cached.rows;
+        }
+      }
+
+      try {
+        // ✅ Gunakan findOrCreate dengan retry
+        let data = await getOrCreateData(loadYear, loadQuarter, forceReload);
+
+        if (!data) {
+          // Retry sekali
+          await new Promise((r) => setTimeout(r, 500));
+          data = await getOrCreateData(loadYear, loadQuarter, true);
         }
 
-        const updatedKepatuhan = await kepatuhanService.updateParameter(kepatuhan.id, parameterId, parameterData);
+        if (!data) {
+          throw new Error('Gagal memuat atau membuat data setelah retry');
+        }
 
-        if (!mountedRef.current) throw new Error('Component unmounted');
-
-        safeSet(setKepatuhan, updatedKepatuhan);
-
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
-
-        const updatedParameter = params.find((p) => p.id === parameterId);
-        if (!updatedParameter) throw new Error('Parameter tidak ditemukan setelah update');
-
-        toast({
-          title: 'Berhasil',
-          description: 'Parameter berhasil diperbarui',
+        updateCache(loadYear, loadQuarter, {
+          rows: data.rows,
+          inherentId: data.inherentId,
+          entity: data.entity,
         });
 
-        return updatedParameter;
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal mengupdate parameter';
-        safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        if (isActivePeriod) {
+          safeSet(setRows, data.rows);
+          safeSet(setCurrentInherentId, data.inherentId);
+          safeSet(setCurrentInherentData, data.entity);
+          safeSet(setYear, loadYear);
+          safeSet(setQuarter, loadQuarter);
+          safeSet(setActivePeriodKey, cacheKey);
+          safeSet(setIsLoading, false);
+        }
+
+        loadingQueueRef.current.delete(cacheKey);
+        return data.rows;
+      } catch (e: any) {
+        console.error(`[Hook] Error loading ${cacheKey}:`, e.message);
+
+        if (isActivePeriod) {
+          safeSet(setError, e.message || 'Gagal memuat data');
+          safeSet(setRows, []);
+          safeSet(setIsLoading, false);
+        }
+
+        loadingQueueRef.current.delete(cacheKey);
+        return [];
       }
     },
-    [saving, kepatuhan?.id, toast],
+    [year, quarter, getCacheKey, getFromCache, updateCache, getOrCreateData],
   );
 
-  const deleteParameter = useCallback(
-    async (parameterId: number): Promise<void> => {
-      if (!window.confirm('Hapus parameter ini? Semua nilai di dalamnya juga akan terhapus.')) return;
-      if (saving) throw new Error('Already saving');
-      if (!kepatuhan?.id) throw new Error('Tidak ada data kepatuhan yang dipilih');
+  /* =======================
+     CHANGE YEAR-QUARTER - PERBAIKAN UTAMA
+  ======================= */
 
-      safeSet(setSaving, true);
+  const changeYearQuarter = useCallback(
+    async (newYear: number, newQuarter: number) => {
+      console.log(`[Hook] changeYearQuarter: ${year}-Q${quarter} → ${newYear}-Q${newQuarter}`);
+
+      if (!newYear || !newQuarter || newQuarter < 1 || newQuarter > 4) {
+        safeSet(setError, 'Year/quarter tidak valid');
+        return [];
+      }
+
+      // Reset state
+      safeSet(setRows, []);
+      safeSet(setCurrentInherentId, null);
+      safeSet(setCurrentInherentData, null);
+      safeSet(setYear, newYear);
+      safeSet(setQuarter, newQuarter);
+      safeSet(setError, null);
+      safeSet(setIsLoading, true);
+
+      try {
+        const data = await loadData(newYear, newQuarter, false);
+        return data;
+      } catch (error) {
+        console.error('[Hook] Error changing quarter:', error);
+        safeSet(setError, 'Gagal memuat data');
+        safeSet(setRows, []);
+        safeSet(setIsLoading, false);
+        return [];
+      }
+    },
+    [year, quarter, loadData],
+  );
+
+  /* =======================
+     HELPER: Validasi dan update cache untuk operasi CRUD
+  ======================= */
+
+  const validateAndGetCurrentContext = useCallback(() => {
+    if (!currentInherentId) {
+      throw new Error('Data belum dimuat. Silakan load data terlebih dahulu.');
+    }
+    if (!year || !quarter) {
+      throw new Error('Year dan quarter tidak valid untuk operasi ini');
+    }
+
+    return { inherentId: currentInherentId, year, quarter };
+  }, [currentInherentId, year, quarter]);
+
+  const updateCacheAfterOperation = useCallback(
+    async (targetYear?: number, targetQuarter?: number) => {
+      const effectiveYear = targetYear ?? year;
+      const effectiveQuarter = targetQuarter ?? quarter;
+
+      if (!effectiveYear || !effectiveQuarter) {
+        console.warn('[Hook] Cannot update cache: year or quarter is null');
+        return [];
+      }
+
+      try {
+        console.log(`[Hook] Updating cache for ${effectiveYear}-Q${effectiveQuarter}`);
+
+        // Gunakan getOrCreateData untuk mendapatkan data terbaru
+        const data = await getOrCreateData(effectiveYear, effectiveQuarter, true);
+
+        if (!data) {
+          throw new Error('Gagal memperbarui cache');
+        }
+
+        // Update cache
+        updateCache(effectiveYear, effectiveQuarter, {
+          rows: data.rows,
+          inherentId: data.inherentId,
+          entity: data.entity,
+        });
+
+        // Update state jika ini adalah period yang aktif
+        if (year === effectiveYear && quarter === effectiveQuarter) {
+          safeSet(setRows, data.rows);
+          safeSet(setCurrentInherentData, data.entity);
+          if (data.inherentId) {
+            safeSet(setCurrentInherentId, data.inherentId);
+          }
+        }
+
+        console.log(`[Hook] Cache updated for ${effectiveYear}-Q${effectiveQuarter}: ${data.rows.length} parameters`);
+        return data.rows;
+      } catch (error) {
+        console.error(`[Hook] Error updating cache for ${effectiveYear}-Q${effectiveQuarter}:`, error);
+        throw error;
+      }
+    },
+    [year, quarter, getOrCreateData, updateCache],
+  );
+
+  /* =======================
+     PARAMETER OPERATIONS - DIPERBAIKI
+  ======================= */
+
+  const handleAddParameter = useCallback(
+    async (dto: Partial<CreateParameterDto>) => {
+      const context = validateAndGetCurrentContext();
+      console.log('[Hook] handleAddParameter called:', context);
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        const updatedKepatuhan = await kepatuhanService.removeParameter(kepatuhan.id, parameterId);
+        const cleanPayload: CreateParameterDto = {
+          nomor: dto.nomor?.toString().trim() || '',
+          judul: dto.judul?.toString().trim() || '',
+          bobot: formatBobot(dto.bobot),
+          kategori: formatKategori(dto.kategori),
+        };
 
-        if (!mountedRef.current) return;
+        // Validasi
+        const judulValidation = validateParameterJudul(cleanPayload.judul);
+        if (!judulValidation.isValid) {
+          throw new Error(judulValidation.error);
+        }
 
-        safeSet(setKepatuhan, updatedKepatuhan);
+        const bobotValidation = validateBobot(cleanPayload.bobot);
+        if (!bobotValidation.isValid) {
+          throw new Error(bobotValidation.error);
+        }
 
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
+        const kategoriValidation = validateKategori(cleanPayload.kategori);
+        if (!kategoriValidation.isValid) {
+          throw new Error(kategoriValidation.error);
+        }
 
-        toast({
-          title: 'Berhasil',
-          description: 'Parameter berhasil dihapus',
-        });
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal menghapus parameter';
-        safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        // Clean kategori untuk backend
+        const { model, prinsip, jenis, underlying } = cleanPayload.kategori;
+        const cleanKategori: any = {
+          model,
+          underlying: Array.isArray(underlying) ? underlying : [],
+        };
+
+        if (model === 'tanpa_model') {
+          cleanKategori.prinsip = null;
+          cleanKategori.jenis = null;
+        } else {
+          cleanKategori.prinsip = prinsip || null;
+          if (model === 'open_end') {
+            cleanKategori.jenis = jenis || null;
+          } else if (model === 'terstruktur') {
+            cleanKategori.jenis = null;
+          }
+        }
+
+        const finalPayload: CreateParameterDto = {
+          ...cleanPayload,
+          kategori: cleanKategori,
+        };
+
+        console.log('[Hook] Add parameter payload:', JSON.stringify(finalPayload, null, 2));
+
+        // Gunakan loadOrCreateData dari service untuk memastikan data ada
+        await kepatuhanProdukService.loadOrCreateData(context.year, context.quarter);
+
+        // Tambahkan parameter
+        await kepatuhanProdukService.addParameter(context.inherentId, finalPayload);
+
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
+
+        console.log('[Hook] Parameter added successfully');
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error adding parameter:', e);
+
+        let errorMessage = 'Gagal menambahkan parameter';
+        if (e.response?.data) {
+          const errorData = e.response.data;
+          if (errorData.message && Array.isArray(errorData.message)) {
+            const validationErrors = errorData.message
+              .map((err: any) => {
+                const field = err.property || 'unknown';
+                const constraints = err.constraints || {};
+                const messages = Object.values(constraints).join(', ');
+                return `${field}: ${messages}`;
+              })
+              .join('\n');
+            errorMessage = `Validasi gagal:\n${validationErrors}`;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } else if (e.message) {
+          errorMessage = e.message;
+        }
+
+        safeSet(setError, errorMessage);
+        safeSet(setIsLoading, false);
+        throw new Error(errorMessage);
       }
     },
-    [saving, kepatuhan?.id, toast],
+    [validateAndGetCurrentContext, formatBobot, formatKategori, validateParameterJudul, validateBobot, validateKategori, updateCacheAfterOperation],
   );
 
-  const copyParameter = useCallback(
-    async (kepatuhanId: number, parameterId: number): Promise<void> => {
-      if (saving) throw new Error('Already saving');
+  // =======================
+  // TAMBAHKAN FUNGSI handleUpdateParameter
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleUpdateParameter = useCallback(
+    async (parameterId: string, dto: UpdateParameterDto) => {
+      const context = validateAndGetCurrentContext();
+      console.log('[Hook] handleUpdateParameter called:', { context, parameterId });
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        const updatedKepatuhan = await kepatuhanService.copyParameter(kepatuhanId, parameterId);
+        const payload: UpdateParameterDto = {};
 
-        if (!mountedRef.current) return;
+        if (dto.nomor !== undefined) payload.nomor = dto.nomor;
+        if (dto.judul !== undefined) {
+          const validation = validateParameterJudul(dto.judul);
+          if (!validation.isValid) {
+            throw new Error(validation.error);
+          }
+          payload.judul = kepatuhanProdukService.formatParameterJudul(dto.judul);
+        }
+        if (dto.bobot !== undefined) {
+          const validation = validateBobot(dto.bobot);
+          if (!validation.isValid) {
+            throw new Error(validation.error);
+          }
+          payload.bobot = validation.value;
+        }
+        if (dto.kategori !== undefined) {
+          const cleanKategori = formatKategori(dto.kategori);
+          const validation = validateKategori(cleanKategori);
+          if (!validation.isValid) {
+            throw new Error(validation.error);
+          }
 
-        safeSet(setKepatuhan, updatedKepatuhan);
+          const formattedKategori = {
+            model: cleanKategori.model,
+            prinsip: cleanKategori.model !== 'tanpa_model' ? cleanKategori.prinsip : undefined,
+            jenis: cleanKategori.model === 'open_end' ? cleanKategori.jenis : undefined,
+            underlying: cleanKategori.model === 'terstruktur' ? (Array.isArray(cleanKategori.underlying) ? cleanKategori.underlying : []) : [],
+          };
 
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
+          payload.kategori = formattedKategori;
+        }
+        if (dto.orderIndex !== undefined) payload.orderIndex = dto.orderIndex;
 
-        toast({
-          title: 'Berhasil',
-          description: 'Parameter berhasil disalin',
-        });
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal menyalin parameter';
+        const parameterIdNum = parseInt(parameterId, 10);
+        if (isNaN(parameterIdNum)) {
+          throw new Error(`Parameter ID tidak valid: ${parameterId}`);
+        }
+
+        console.log('[Hook] Update parameter payload:', JSON.stringify(payload, null, 2));
+
+        await kepatuhanProdukService.updateParameter(context.inherentId, parameterIdNum, payload);
+
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
+
+        console.log(`[Hook] Parameter ${parameterId} updated successfully`);
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error updating parameter:', e);
+
+        let errorMsg = 'Gagal mengupdate parameter';
+        if (e.response?.data) {
+          const errorData = e.response.data;
+          if (Array.isArray(errorData.errors)) {
+            const errorDetails = errorData.errors.map((err) => `${err.field || 'unknown'}: ${err.message}`).join('\n');
+            errorMsg = `Validasi gagal:\n${errorDetails}`;
+          } else if (errorData.message) {
+            errorMsg = errorData.message;
+          }
+        } else if (e.message) {
+          errorMsg = e.message;
+        }
+
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw new Error(errorMsg);
       }
     },
-    [saving, toast],
+    [validateAndGetCurrentContext, validateParameterJudul, validateBobot, formatKategori, validateKategori, updateCacheAfterOperation],
   );
 
-  const reorderParameters = useCallback(
-    async (kepatuhanId: number, parameterIds: number[]): Promise<void> => {
-      if (saving) throw new Error('Already saving');
+  // =======================
+  // TAMBAHKAN FUNGSI handleCopyParameter
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleCopyParameter = useCallback(
+    async (parameterId: string) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleCopyParameter called: ${parameterId}`, context);
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        await kepatuhanService.reorderParameters(kepatuhanId, parameterIds);
+        const parameterIdNum = parseInt(parameterId, 10);
+        if (isNaN(parameterIdNum)) {
+          throw new Error(`Parameter ID tidak valid: ${parameterId}`);
+        }
 
-        await refreshData();
+        await kepatuhanProdukService.copyParameter(context.inherentId, parameterIdNum);
 
-        toast({
-          title: 'Berhasil',
-          description: 'Urutan parameter berhasil diubah',
-        });
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal mengubah urutan parameter';
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
+
+        console.log(`[Hook] Parameter ${parameterId} copied successfully`);
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error copying parameter:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal menyalin parameter';
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw e;
       }
     },
-    [saving, refreshData, toast],
+    [validateAndGetCurrentContext, updateCacheAfterOperation],
   );
 
-  // ========== NILAI OPERATIONS ==========
-  const addNilai = useCallback(
-    async (kepatuhanId: number, parameterId: number, nilaiData: CreateNilaiDto): Promise<NilaiEntity> => {
-      if (saving) throw new Error('Already saving');
+  // =======================
+  // TAMBAHKAN FUNGSI handleDeleteParameter
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleDeleteParameter = useCallback(
+    async (parameterId: string) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleDeleteParameter called: ${parameterId}`, context);
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        const bobotNum = Number(nilaiData.bobot);
-        if (isNaN(bobotNum) || bobotNum < 0 || bobotNum > 100) {
-          throw new Error('Bobot harus antara 0 dan 100');
+        const parameterIdNum = parseInt(parameterId, 10);
+        if (isNaN(parameterIdNum)) {
+          throw new Error(`Parameter ID tidak valid: ${parameterId}`);
+        }
+
+        await kepatuhanProdukService.removeParameter(context.inherentId, parameterIdNum);
+
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
+
+        console.log(`[Hook] Parameter ${parameterId} deleted successfully`);
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error deleting parameter:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal menghapus parameter';
+        safeSet(setError, errorMsg);
+        safeSet(setIsLoading, false);
+        throw e;
+      }
+    },
+    [validateAndGetCurrentContext, updateCacheAfterOperation],
+  );
+
+  /* =======================
+     NILAI OPERATIONS - DIPERBAIKI
+  ======================= */
+
+  // =======================
+  // TAMBAHKAN FUNGSI handleAddNilai
+  // =======================
+
+  const handleAddNilai = useCallback(
+    async (parameterId: string, dto: CreateNilaiDto) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleAddNilai called:`, { context, parameterId });
+
+      safeSet(setIsLoading, true);
+      safeSet(setError, null);
+
+      try {
+        const parameterIdNum = parseInt(parameterId, 10);
+        if (isNaN(parameterIdNum)) {
+          throw new Error(`Parameter ID tidak valid: ${parameterId}`);
+        }
+
+        if (!dto.judul?.text || dto.judul.text.trim() === '') {
+          throw new Error('Judul nilai tidak boleh kosong');
+        }
+
+        const bobotValidation = validateBobot(dto.bobot);
+        if (!bobotValidation.isValid) {
+          throw new Error(bobotValidation.error || 'Bobot tidak valid');
         }
 
         const payload: CreateNilaiDto = {
-          nomor: nilaiData.nomor || '',
-          judul: nilaiData.judul || { text: '' },
-          bobot: bobotNum,
-          portofolio: nilaiData.portofolio || '',
-          keterangan: nilaiData.keterangan || '',
-          riskindikator: nilaiData.riskindikator || {},
-          orderIndex: nilaiData.orderIndex || 0,
+          ...dto,
+          bobot: bobotValidation.value,
+          judul: formatNilaiJudul(dto.judul),
         };
 
-        const updatedKepatuhan = await kepatuhanService.addNilai(kepatuhanId, parameterId, payload);
+        console.log('[Hook] Add nilai payload:', payload);
 
-        if (!mountedRef.current) throw new Error('Component unmounted');
+        // Gunakan loadOrCreateData dari service untuk memastikan data ada
+        await kepatuhanProdukService.loadOrCreateData(context.year, context.quarter);
 
-        safeSet(setKepatuhan, updatedKepatuhan);
+        // Tambahkan nilai
+        await kepatuhanProdukService.addNilai(context.inherentId, parameterIdNum, payload);
 
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
 
-        const updatedParameter = params.find((p) => p.id === parameterId);
-        const newNilai = updatedParameter?.nilaiList?.slice(-1)[0];
+        console.log(`[Hook] Nilai added to parameter ${parameterId} successfully`);
+        safeSet(setIsLoading, false);
 
-        toast({
-          title: 'Berhasil',
-          description: 'Nilai berhasil ditambahkan',
-        });
-
-        return newNilai || ({ id: 0 } as NilaiEntity);
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal menambahkan nilai';
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error adding nilai:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal menambahkan nilai';
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw e;
       }
     },
-    [saving, toast],
+    [validateAndGetCurrentContext, validateBobot, formatNilaiJudul, updateCacheAfterOperation],
   );
 
-  const updateNilai = useCallback(
-    async (nilaiId: number, nilaiData: UpdateNilaiDto): Promise<NilaiEntity> => {
-      if (saving) throw new Error('Already saving');
-      if (!kepatuhan?.id) throw new Error('Tidak ada data kepatuhan yang dipilih');
+  // =======================
+  // TAMBAHKAN FUNGSI handleUpdateNilai
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleUpdateNilai = useCallback(
+    async (parameterId: string, nilaiId: string, dto: UpdateNilaiDto) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleUpdateNilai called:`, { context, parameterId, nilaiId });
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        if (nilaiData.bobot !== undefined) {
-          const bobotNum = Number(nilaiData.bobot);
-          if (isNaN(bobotNum) || bobotNum < 0 || bobotNum > 100) {
-            throw new Error('Bobot harus antara 0 dan 100');
-          }
-          nilaiData.bobot = bobotNum;
+        const parameterIdNum = parseInt(parameterId, 10);
+        const nilaiIdNum = parseInt(nilaiId, 10);
+
+        if (isNaN(parameterIdNum) || isNaN(nilaiIdNum)) {
+          throw new Error(`ID tidak valid: parameterId=${parameterId}, nilaiId=${nilaiId}`);
         }
 
-        let targetParameterId: number | null = null;
-        for (const param of parameters) {
-          if (param.nilaiList?.some((n) => n.id === nilaiId)) {
-            targetParameterId = param.id;
-            break;
-          }
+        const payload: UpdateNilaiDto = { ...dto };
+
+        if (dto.judul !== undefined) {
+          payload.judul = formatNilaiJudul(dto.judul);
         }
 
-        if (!targetParameterId) {
-          throw new Error(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
+        if (dto.bobot !== undefined) {
+          payload.bobot = formatBobot(dto.bobot);
         }
 
-        const updatedKepatuhan = await kepatuhanService.updateNilai(kepatuhan.id, targetParameterId, nilaiId, nilaiData);
+        console.log('[Hook] Update nilai payload:', payload);
 
-        if (!mountedRef.current) throw new Error('Component unmounted');
+        await kepatuhanProdukService.updateNilai(context.inherentId, parameterIdNum, nilaiIdNum, payload);
 
-        safeSet(setKepatuhan, updatedKepatuhan);
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
 
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
+        console.log(`[Hook] Nilai ${nilaiId} updated successfully`);
+        safeSet(setIsLoading, false);
 
-        const updatedParameter = params.find((p) => p.id === targetParameterId);
-        const updatedNilai = updatedParameter?.nilaiList?.find((n) => n.id === nilaiId);
-
-        if (!updatedNilai) throw new Error('Nilai tidak ditemukan setelah update');
-
-        toast({
-          title: 'Berhasil',
-          description: 'Nilai berhasil diperbarui',
-        });
-
-        return updatedNilai;
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal mengupdate nilai';
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error updating nilai:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal mengupdate nilai';
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw e;
       }
     },
-    [saving, kepatuhan?.id, parameters, toast],
+    [validateAndGetCurrentContext, formatNilaiJudul, formatBobot, updateCacheAfterOperation],
   );
 
-  const deleteNilai = useCallback(
-    async (nilaiId: number): Promise<void> => {
-      if (!window.confirm('Hapus nilai ini?')) return;
-      if (saving) throw new Error('Already saving');
-      if (!kepatuhan?.id) throw new Error('Tidak ada data kepatuhan yang dipilih');
+  // =======================
+  // TAMBAHKAN FUNGSI handleCopyNilai
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleCopyNilai = useCallback(
+    async (parameterId: string, nilaiId: string) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleCopyNilai called:`, { context, parameterId, nilaiId });
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        let targetParameterId: number | null = null;
-        for (const param of parameters) {
-          if (param.nilaiList?.some((n) => n.id === nilaiId)) {
-            targetParameterId = param.id;
-            break;
-          }
+        const parameterIdNum = parseInt(parameterId, 10);
+        const nilaiIdNum = parseInt(nilaiId, 10);
+
+        if (isNaN(parameterIdNum) || isNaN(nilaiIdNum)) {
+          throw new Error(`ID tidak valid: parameterId=${parameterId}, nilaiId=${nilaiId}`);
         }
 
-        if (!targetParameterId) {
-          throw new Error(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-        }
+        await kepatuhanProdukService.copyNilai(context.inherentId, parameterIdNum, nilaiIdNum);
 
-        const updatedKepatuhan = await kepatuhanService.removeNilai(kepatuhan.id, targetParameterId, nilaiId);
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
 
-        if (!mountedRef.current) return;
+        console.log(`[Hook] Nilai ${nilaiId} copied successfully`);
+        safeSet(setIsLoading, false);
 
-        safeSet(setKepatuhan, updatedKepatuhan);
-
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
-
-        toast({
-          title: 'Berhasil',
-          description: 'Nilai berhasil dihapus',
-        });
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal menghapus nilai';
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error copying nilai:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal menyalin nilai';
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw e;
       }
     },
-    [saving, kepatuhan?.id, parameters, toast],
+    [validateAndGetCurrentContext, updateCacheAfterOperation],
   );
 
-  const copyNilai = useCallback(
-    async (kepatuhanId: number, parameterId: number, nilaiId: number): Promise<void> => {
-      if (saving) throw new Error('Already saving');
+  // =======================
+  // TAMBAHKAN FUNGSI handleDeleteNilai
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleDeleteNilai = useCallback(
+    async (parameterId: string, nilaiId: string) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleDeleteNilai called:`, { context, parameterId, nilaiId });
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        const updatedKepatuhan = await kepatuhanService.copyNilai(kepatuhanId, parameterId, nilaiId);
+        const parameterIdNum = parseInt(parameterId, 10);
+        const nilaiIdNum = parseInt(nilaiId, 10);
 
-        if (!mountedRef.current) return;
+        if (isNaN(parameterIdNum) || isNaN(nilaiIdNum)) {
+          throw new Error(`ID tidak valid: parameterId=${parameterId}, nilaiId=${nilaiId}`);
+        }
 
-        safeSet(setKepatuhan, updatedKepatuhan);
+        await kepatuhanProdukService.removeNilai(context.inherentId, parameterIdNum, nilaiIdNum);
 
-        const params = Array.isArray(updatedKepatuhan.parameters) ? updatedKepatuhan.parameters : [];
-        safeSet(setParameters, params);
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
 
-        toast({
-          title: 'Berhasil',
-          description: 'Nilai berhasil disalin',
-        });
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal menyalin nilai';
+        console.log(`[Hook] Nilai ${nilaiId} deleted successfully`);
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error deleting nilai:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal menghapus nilai';
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw e;
       }
     },
-    [saving, toast],
+    [validateAndGetCurrentContext, updateCacheAfterOperation],
   );
 
-  const reorderNilai = useCallback(
-    async (kepatuhanId: number, parameterId: number, nilaiIds: number[]): Promise<void> => {
-      if (saving) throw new Error('Already saving');
+  // =======================
+  // TAMBAHKAN FUNGSI handleReorderParameters (jika diperlukan)
+  // =======================
 
-      safeSet(setSaving, true);
+  const handleReorderParameters = useCallback(
+    async (parameterIds: string[]) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleReorderParameters called:`, { context, parameterIds });
+
+      safeSet(setIsLoading, true);
       safeSet(setError, null);
 
       try {
-        await kepatuhanService.reorderNilai(kepatuhanId, parameterId, nilaiIds);
+        const parameterIdsNum = parameterIds.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
 
-        await refreshData();
+        if (parameterIdsNum.length !== parameterIds.length) {
+          throw new Error('Beberapa ID parameter tidak valid');
+        }
 
-        toast({
-          title: 'Berhasil',
-          description: 'Urutan nilai berhasil diubah',
-        });
-      } catch (err: any) {
-        const errorMsg = err.message || 'Gagal mengubah urutan nilai';
+        await kepatuhanProdukService.reorderParameters(context.inherentId, parameterIdsNum);
+
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
+
+        console.log(`[Hook] Parameters reordered successfully`);
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error reordering parameters:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal mengurutkan parameter';
         safeSet(setError, errorMsg);
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
-        throw err;
-      } finally {
-        safeSet(setSaving, false);
+        safeSet(setIsLoading, false);
+        throw e;
       }
     },
-    [saving, refreshData, toast],
+    [validateAndGetCurrentContext, updateCacheAfterOperation],
   );
 
-  // ========== UTILITY ==========
-  const getParametersByKepatuhanId = useCallback(
-    (kepatuhanId: number): ParameterEntity[] => {
-      if (kepatuhan?.id === kepatuhanId) {
-        return parameters;
+  // =======================
+  // TAMBAHKAN FUNGSI handleReorderNilai (jika diperlukan)
+  // =======================
+  const handleReorderNilai = useCallback(
+    async (parameterId: string, nilaiIds: string[]) => {
+      const context = validateAndGetCurrentContext();
+      console.log(`[Hook] handleReorderNilai called:`, { context, parameterId, nilaiIds });
+
+      safeSet(setIsLoading, true);
+      safeSet(setError, null);
+
+      try {
+        const parameterIdNum = parseInt(parameterId, 10);
+        if (isNaN(parameterIdNum)) {
+          throw new Error(`Parameter ID tidak valid: ${parameterId}`);
+        }
+
+        const nilaiIdsNum = nilaiIds.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
+
+        if (nilaiIdsNum.length !== nilaiIds.length) {
+          throw new Error('Beberapa ID nilai tidak valid');
+        }
+
+        await kepatuhanProdukService.reorderNilai(context.inherentId, parameterIdNum, nilaiIdsNum);
+
+        // Update cache untuk year-quarter ini
+        await updateCacheAfterOperation(context.year, context.quarter);
+
+        console.log(`[Hook] Nilai reordered successfully for parameter ${parameterId}`);
+        safeSet(setIsLoading, false);
+
+        return true;
+      } catch (e: any) {
+        console.error('[Hook] Error reordering nilai:', e);
+        const errorMsg = e.response?.data?.message || e.message || 'Gagal mengurutkan nilai';
+        safeSet(setError, errorMsg);
+        safeSet(setIsLoading, false);
+        throw e;
       }
-      return [];
     },
-    [kepatuhan?.id, parameters],
+    [validateAndGetCurrentContext, updateCacheAfterOperation],
   );
 
-  const getNilaiByParameterId = useCallback(
-    (parameterId: number): NilaiEntity[] => {
-      const parameter = parameters.find((p) => p.id === parameterId);
-      return parameter?.nilaiList || [];
+  // =======================
+  // TAMBAHKAN FUNGSI getParameterById
+  // =======================
+
+  const getParameterById = useCallback(
+    (parameterId: string) => {
+      if (!Array.isArray(rows)) {
+        console.warn('[Hook] rows is not an array in getParameterById');
+        return undefined;
+      }
+      return rows.find((p) => p.id === parameterId);
     },
-    [parameters],
+    [rows],
   );
+
+  /* =======================
+     UTILITY FUNCTIONS - DIPERBAIKI
+  ======================= */
+
+  const reloadData = useCallback(
+    async (reloadYear?: number, reloadQuarter?: number) => {
+      const targetYear = reloadYear ?? year;
+      const targetQuarter = reloadQuarter ?? quarter;
+
+      if (!targetYear || !targetQuarter) {
+        throw new Error('Year dan quarter diperlukan untuk reload data');
+      }
+
+      console.log(`[Hook] Reloading data for ${targetYear}-Q${targetQuarter}`);
+
+      // Clear cache untuk year-quarter ini
+      clearCache(targetYear, targetQuarter);
+
+      // Jika ini adalah period yang aktif, update state
+      if (year === targetYear && quarter === targetQuarter) {
+        safeSet(setRows, []);
+        safeSet(setCurrentInherentId, null);
+        safeSet(setCurrentInherentData, null);
+        safeSet(setError, null);
+        safeSet(setIsLoading, true);
+      }
+
+      return loadData(targetYear, targetQuarter, true);
+    },
+    [year, quarter, loadData, clearCache],
+  );
+
+  const reset = useCallback(() => {
+    console.log('[Hook] Resetting hook state');
+
+    safeSet(setRows, []);
+    safeSet(setIsLoading, false);
+    safeSet(setError, null);
+    safeSet(setCurrentInherentId, null);
+    safeSet(setCurrentInherentData, null);
+    safeSet(setYear, null);
+    safeSet(setQuarter, null);
+    safeSet(setActivePeriodKey, '');
+
+    clearCache();
+    loadingQueueRef.current.clear();
+  }, [clearCache]);
+
+  const clearError = useCallback(() => {
+    console.log('[Hook] Clearing error');
+    safeSet(setError, null);
+  }, []);
+
+  const safeSetRows = useCallback((newRows: any) => {
+    console.log('[Hook] Setting new rows:', {
+      inputType: typeof newRows,
+      isArray: Array.isArray(newRows),
+      length: Array.isArray(newRows) ? newRows.length : 'N/A',
+    });
+
+    const safeRows = Array.isArray(newRows) ? newRows : [];
+    safeSet(setRows, safeRows);
+  }, []);
+
+  /* =======================
+     AUTO-LOAD EFFECT - DIPERBAIKI
+  ======================= */
+
+  useEffect(() => {
+    const initLoad = async () => {
+      if (initialYear && initialQuarter) {
+        console.log(`[Hook] Auto-loading data for ${initialYear}-Q${initialQuarter}`);
+        try {
+          await loadData(initialYear, initialQuarter, true);
+        } catch (error) {
+          console.error('[Hook] Auto-load failed:', error);
+          safeSet(setRows, []);
+        }
+      } else {
+        console.log('[Hook] No initialYear/initialQuarter provided, skipping auto-load');
+      }
+    };
+
+    const timer = setTimeout(() => {
+      if (mountedRef.current) {
+        initLoad();
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [initialYear, initialQuarter, loadData]);
+
+  /* =======================
+     RETURN VALUES - DITAMBAHKAN SEMUA FUNGSI
+  ======================= */
 
   return {
-    kepatuhan,
-    parameters,
-    loading,
-    saving,
+    // State
+    rows: Array.isArray(rows) ? rows : [],
+    isLoading,
     error,
-    currentKepatuhanId,
+    currentInherentId,
+    currentInherentData,
+    year,
+    quarter,
+    activePeriodKey,
 
-    loadByYearQuarter,
-    refreshData,
-    createKepatuhan,
+    // Data operations
+    loadData,
+    changeYearQuarter,
+    reloadData,
+    reset,
+    clearError,
 
-    addParameter,
-    updateParameter,
-    deleteParameter,
-    copyParameter,
-    reorderParameters,
+    // Parameter operations
+    handleAddParameter,
+    handleUpdateParameter, // DITAMBAHKAN
+    handleCopyParameter, // DITAMBAHKAN
+    handleDeleteParameter, // DITAMBAHKAN
 
-    addNilai,
-    updateNilai,
-    deleteNilai,
-    copyNilai,
-    reorderNilai,
+    // Nilai operations
+    handleAddNilai, // DITAMBAHKAN
+    handleUpdateNilai, // DITAMBAHKAN
+    handleCopyNilai, // DITAMBAHKAN
+    handleDeleteNilai, // DITAMBAHKAN
 
-    getParametersByKepatuhanId,
-    getNilaiByParameterId,
+    // Reorder operations
+    handleReorderParameters, // DITAMBAHKAN
+    handleReorderNilai, // DITAMBAHKAN
 
-    hasData: parameters.length > 0 && kepatuhan !== null,
-    isReady: !loading && !saving && kepatuhan !== null,
+    // Helper functions
+    getParameterById,
+    setRows: safeSetRows,
+
+    // Formatting helpers
+    formatParameterJudul,
+    formatNilaiJudul,
+    formatBobot,
+    formatKategori,
+
+    // Validation helpers
+    validateKategori,
+    validateParameterJudul,
+    validateBobot,
+
+    // Cache management
+    clearCache,
+    getCacheInfo: () => ({
+      size: cacheRef.current.size,
+      keys: Array.from(cacheRef.current.keys()),
+      currentKey: getCurrentCacheKey(),
+      loadingQueue: Array.from(loadingQueueRef.current),
+    }),
+
+    // Status helpers
+    hasData: Array.isArray(rows) && rows.length > 0,
+    isReady: currentInherentId !== null && !isLoading,
     hasError: error !== null,
-  };
-}
 
-export default useKepatuhanInherent;
+    // Debug info
+    cacheSize: cacheRef.current.size,
+
+    // New helper functions
+    getOrCreateData,
+  };
+};
+
+export default useKepatuhanProdukIntegration;

@@ -1,4 +1,4 @@
-// src/entities/strategik/strategik-section.entity.ts
+// src/entities/strategik/stratejik-section.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -8,19 +8,18 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
-import { Quarter, Strategik } from './stratejik.entity';
+import { Quarter, Stratejik } from './stratejik.entity';
 
-@Entity('sections_strategik')
+@Entity('sections_stratejik_holding')
 @Index(
-  'IDX_STRATEGIK_SECTION_PERIOD_UNIQUE',
+  'IDX_STRATEJIK_SECTION_PERIOD_UNIQUE',
   ['year', 'quarter', 'no', 'parameter'],
   { unique: true },
 )
-export class StrategikSection {
+export class StratejikSection {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // TAMBAHKAN INI - Section HARUS punya periode
   @Column({ type: 'int' })
   year: number;
 
@@ -28,7 +27,7 @@ export class StrategikSection {
   quarter: Quarter;
 
   @Column({ type: 'varchar', length: 50 })
-  no: string; // Contoh: "6.1"
+  no: string;
 
   @Column({
     name: 'bobot_section',
@@ -40,7 +39,7 @@ export class StrategikSection {
   bobotSection: number;
 
   @Column({ type: 'varchar', length: 500 })
-  parameter: string; // Nama section
+  parameter: string;
 
   @Column({ type: 'text', nullable: true })
   description: string | null;
@@ -72,6 +71,22 @@ export class StrategikSection {
   })
   isDeleted: boolean;
 
-  @OneToMany(() => Strategik, (strategik) => strategik.section)
-  strategikIndicators: Strategik[];
+  @Column({
+    name: 'created_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  createdBy: string | null;
+
+  @Column({
+    name: 'updated_by',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  updatedBy: string | null;
+
+  @OneToMany(() => Stratejik, (stratejik) => stratejik.section)
+  stratejikIndicators: Stratejik[];
 }

@@ -8,7 +8,6 @@ export default function DarkModeToggle() {
   const toggleStyle = {
     padding: '10px',
     borderRadius: '50%',
-    border: 'none',
     cursor: 'pointer',
     transition: 'all 0.3s ease',
     display: 'flex',

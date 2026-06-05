@@ -1,6 +1,6 @@
-// src/features/Dashboard/pages/RiskProfile/pages/Operasional/services/operasional.service.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Operasional/services/new-operasional.service.ts
 import axios, { AxiosResponse } from 'axios';
-import { api_stratejik } from '../../../../../../services/api.service';
+import { SectionsWithIndicatorsResponse } from '../../pasar/service/pasar/pasar.service';
 
 // ENUMS
 export enum CalculationMode {
@@ -25,8 +25,6 @@ export interface OperasionalSection {
   description: string | null;
   sortOrder: number;
   isActive: boolean;
-  year: number;
-  quarter: Quarter;
   createdAt: Date;
   updatedAt: Date;
   isDeleted: boolean;
@@ -82,8 +80,6 @@ export interface CreateOperasionalSectionData {
   description?: string;
   sortOrder?: number;
   isActive?: boolean;
-  year: number;
-  quarter: Quarter;
 }
 
 export interface UpdateOperasionalSectionData {
@@ -93,8 +89,6 @@ export interface UpdateOperasionalSectionData {
   description?: string;
   sortOrder?: number;
   isActive?: boolean;
-  year?: number;
-  quarter?: Quarter;
 }
 
 export interface CreateOperasionalData {
@@ -169,6 +163,11 @@ export interface Period {
   quarter: Quarter;
 }
 
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+}
+
 // UTILITY FUNCTIONS
 export const fmtNumber = (v: any): string => {
   if (v === '' || v == null) return '';
@@ -182,14 +181,16 @@ export const formatHasilNumber = (value: any, maxDecimals = 4): string => {
   const n = Number(value);
   if (!isFinite(n) || isNaN(n)) return '';
 
+  // batasi maxDecimals, lalu buang .0000 di belakang
   const fixed = n.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, '');
+  return fixed.replace(/\.?0+$/, ''); // "1.2300" -> "1.23", "0.0000" -> "0"
 };
 
 export const parseNum = (v: any): number => {
   if (v == null || v === '') return 0;
   if (typeof v === 'number') return v;
 
+  // buang koma, spasi, dll biar "1,000" -> "1000"
   const cleaned = String(v).replace(/,/g, '').replace(/\s/g, '');
   const n = Number(cleaned);
   return isNaN(n) ? 0 : n;
@@ -201,6 +202,12 @@ export const computeHasil = (ind: any): number | null => {
 
   const pemb = parseNum(ind.pembilangValue);
   const peny = parseNum(ind.penyebutValue);
+
+  // 🔹 Validasi untuk mode RASIO
+  if (mode === 'RASIO' && peny === 0) {
+    console.warn('Penyebut value adalah 0 untuk mode RASIO');
+    return null; // Kembalikan null, jangan throw error
+  }
 
   if (ind.formula && ind.formula.trim() !== '') {
     try {
@@ -220,11 +227,13 @@ export const computeHasil = (ind: any): number | null => {
     }
   }
 
+  // 🔹 NILAI_TUNGGAL → langsung pakai nilai penyebut
   if (mode === 'NILAI_TUNGGAL') {
     if (ind.penyebutValue === '' || ind.penyebutValue == null) return null;
-    return peny;
+    return peny; // boleh 0, 10, 100, dll
   }
 
+  // 🔹 RASIO (default) → pemb / peny
   if (peny === 0) return null;
   const result = pemb / peny;
   if (!isFinite(result) || isNaN(result)) return null;
@@ -242,6 +251,17 @@ export const computeWeightedAuto = (ind: any, sectionBobot: number): number => {
 
 export const transformIndicatorToBackend = (indicatorData: any, year: number, quarter: Quarter, sectionId: number, sectionData: any): CreateOperasionalData => {
   const hasilNum = computeHasil(indicatorData);
+
+  // Validasi khusus untuk mode RASIO
+  let penyebutValue = indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined;
+
+  // Untuk mode RASIO, jika penyebut 0 atau undefined, set ke null agar backend menolak
+  if (indicatorData.mode === CalculationMode.RASIO) {
+    if (penyebutValue === 0 || penyebutValue === undefined || isNaN(penyebutValue)) {
+      console.warn('Penyebut value untuk mode RASIO tidak valid:', penyebutValue);
+      // Biarkan undefined, backend akan memberikan error validasi
+    }
+  }
 
   return {
     year,
@@ -266,7 +286,7 @@ export const transformIndicatorToBackend = (indicatorData: any, year: number, qu
     pembilangLabel: indicatorData.pembilangLabel?.trim() || undefined,
     pembilangValue: indicatorData.pembilangValue !== undefined && indicatorData.pembilangValue !== '' ? Number(indicatorData.pembilangValue) : undefined,
     penyebutLabel: indicatorData.penyebutLabel?.trim() || undefined,
-    penyebutValue: indicatorData.penyebutValue !== undefined && indicatorData.penyebutValue !== '' ? Number(indicatorData.penyebutValue) : undefined,
+    penyebutValue: penyebutValue, // Gunakan hasil validasi
     hasil: hasilNum !== null ? hasilNum : undefined,
     hasilText: indicatorData.mode === CalculationMode.TEKS ? indicatorData.hasilText || indicatorData.keterangan || '' : undefined,
     peringkat: Number(indicatorData.peringkat) || 1,
@@ -318,8 +338,6 @@ export const transformSectionToBackend = (sectionData: any, year: number, quarte
     description: sectionData.description || undefined,
     sortOrder: sectionData.sortOrder || 0,
     isActive: sectionData.isActive ?? true,
-    year: year,
-    quarter: quarter,
   };
 };
 
@@ -335,7 +353,6 @@ class OperasionalApiService {
     this.baseUrl = 'http://localhost:5530/api/v1';
   }
 
-  // SECTION APIs
   async createSection(data: CreateOperasionalSectionData): Promise<OperasionalSection> {
     return this.request<OperasionalSection>('post', '/operasional/sections', data);
   }
@@ -353,11 +370,11 @@ class OperasionalApiService {
     return this.request<OperasionalSection>('put', `/operasional/sections/${id}`, data);
   }
 
-  async deleteSection(id: number): Promise<void> {
-    return this.request<void>('delete', `/operasional/sections/${id}`);
+  async deleteSection(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/operasional/sections/${id}`);
   }
 
-  // INDIKATOR APIs
+  // ========== INDIKATOR API ==========
   async createIndikator(data: CreateOperasionalData): Promise<OperasionalIndikator> {
     return this.request<OperasionalIndikator>('post', '/operasional/indikators', data);
   }
@@ -370,8 +387,26 @@ class OperasionalApiService {
     return this.request<OperasionalIndikator[]>('get', '/operasional/indikators/period', null, { year, quarter });
   }
 
-  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<Array<OperasionalSection & { indicators: OperasionalIndikator[] }>> {
-    return this.request<Array<OperasionalSection & { indicators: OperasionalIndikator[] }>>('get', '/operasional/indikators/sections-by-period', null, { year, quarter });
+  async getSectionsWithIndicatorsByPeriod(year: number, quarter: Quarter): Promise<any> {
+    try {
+      console.log(`📡 Calling API: getSectionsWithIndicatorsByPeriod for ${year}-${quarter}`);
+
+      const params = new URLSearchParams();
+      params.append('year', String(year));
+      params.append('quarter', String(quarter));
+
+      const url = `${this.baseUrl}/operasional/data/with-indicators?${params.toString()}`;
+      console.log('🔍 Full URL:', url);
+
+      const response = await axios.get(url);
+
+      console.log('✅ Response from backend:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error in getSectionsWithIndicatorsByPeriod:', error);
+      this.handleError(error);
+      throw error;
+    }
   }
 
   async searchIndikators(query?: string, year?: number, quarter?: Quarter): Promise<OperasionalIndikator[]> {
@@ -391,8 +426,8 @@ class OperasionalApiService {
     return this.request<OperasionalIndikator>('put', `/operasional/indikators/${id}`, data);
   }
 
-  async deleteIndikator(id: number): Promise<void> {
-    return this.request<void>('delete', `/operasional/indikators/${id}`);
+  async deleteIndikator(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/operasional/indikators/${id}`);
   }
 
   async getTotalWeightedByPeriod(year: number, quarter: Quarter): Promise<number> {
@@ -405,10 +440,13 @@ class OperasionalApiService {
   }
 
   async duplicateIndikator(sourceId: number, targetYear: number, targetQuarter: Quarter): Promise<OperasionalIndikator> {
-    return this.request<OperasionalIndikator>('post', `/operasional/indikators/${sourceId}/duplicate`, null, { year: targetYear, quarter: targetQuarter });
+    return this.request<OperasionalIndikator>('post', `/operasional/indikators/${sourceId}/duplicate`, null, {
+      year: targetYear,
+      quarter: targetQuarter,
+    });
   }
 
-  // PRIVATE METHODS
+  // ========== HELPER METHODS ==========
   private async request<T>(method: 'get' | 'post' | 'put' | 'delete', endpoint: string, data?: any, params?: any): Promise<T> {
     try {
       const config = {

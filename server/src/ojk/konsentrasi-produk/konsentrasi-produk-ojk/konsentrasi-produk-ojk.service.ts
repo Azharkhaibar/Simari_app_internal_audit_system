@@ -6,103 +6,325 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { KonsentrasiProdukOjk } from './entities/konsentrasi-produk-ojk.entity';
+import { KonsentrasiProdukOjk as Konsentrasi } from './entities/konsentrasi-produk-ojk.entity';
 import { KonsentrasiParameter } from './entities/konsentrasi-produk-paramter.entity';
 import { KonsentrasiNilai } from './entities/konsentrasi-produk-nilai.entity';
-import { InherentReferenceKonsentrasi } from './entities/konsentrasi-inherent-references.entity';
+import { KonsentrasiReference } from './entities/konsentrasi-inherent-references.entity';
+
 import {
-  CreateKonsentrasiProdukInherentDto,
-  UpdateKonsentrasiProdukInherentDto,
+  CreateKonsentrasiDto,
   CreateParameterDto,
-  UpdateParameterDto,
   CreateNilaiDto,
+  UpdateKonsentrasiDto,
+  UpdateParameterDto,
   UpdateNilaiDto,
-  ReorderParametersDto,
   ReorderNilaiDto,
+  ReorderParametersDto,
   UpdateSummaryDto,
   KategoriModel,
   KategoriPrinsip,
-  KategoriJenis,
   JudulType,
+  KategoriJenis,
 } from './dto/konsentrasi-produk-inherent.dto';
 
 @Injectable()
-export class KonsentrasiProdukOjkService {
-  private readonly logger = new Logger(KonsentrasiProdukOjkService.name);
+export class KonsentrasiService {
+  private readonly logger = new Logger(KonsentrasiService.name);
 
   constructor(
-    @InjectRepository(KonsentrasiProdukOjk)
-    private inherentRepository: Repository<KonsentrasiProdukOjk>,
+    @InjectRepository(Konsentrasi)
+    private konsentrasiRepository: Repository<Konsentrasi>,
     @InjectRepository(KonsentrasiParameter)
     private parameterRepository: Repository<KonsentrasiParameter>,
     @InjectRepository(KonsentrasiNilai)
     private nilaiRepository: Repository<KonsentrasiNilai>,
-    @InjectRepository(InherentReferenceKonsentrasi)
-    private referenceRepository: Repository<InherentReferenceKonsentrasi>,
+    @InjectRepository(KonsentrasiReference)
+    private referenceRepository: Repository<KonsentrasiReference>,
     private dataSource: DataSource,
   ) {}
 
-  // === CRUD UTAMA (KonsentrasiProdukOjk) ===
+  private parseNumber(v: any): number {
+    if (v == null || v === '' || v === undefined) return NaN;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      let cleaned = v.trim();
+      cleaned = cleaned.replace(/\s/g, '');
+      const isPercent = cleaned.includes('%');
+      cleaned = cleaned.replace('%', '');
+      cleaned = cleaned.replace(/\./g, '');
+      cleaned = cleaned.replace(/,/g, '.');
+      const num = Number(cleaned);
+      if (!isNaN(num) && isPercent) {
+        return num / 100;
+      }
+      return num;
+    }
+    return Number(v);
+  }
 
-  async create(createDto: CreateKonsentrasiProdukInherentDto, userId: string) {
+  private evaluateFormula(expr: string, subs: Record<string, number>): number {
+    if (!expr || typeof expr !== 'string' || expr.trim() === '') return NaN;
+    let e = expr.trim();
+    for (const [token, value] of Object.entries(subs)) {
+      const re = new RegExp(`\\b${token}\\b`, 'gi');
+      e = e.replace(re, String(value));
+    }
+    const safeRe = /^[0-9eE\.\+\-\*\/\(\)\s]+$/;
+    if (!safeRe.test(e)) {
+      return NaN;
+    }
     try {
-      const existing = await this.inherentRepository.findOne({
+      const fn = new Function(`"use strict"; return (${e});`);
+      const val = fn();
+      if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
+        return val;
+      }
+      return NaN;
+    } catch {
+      return NaN;
+    }
+  }
+
+  // ============================================
+  // RECALCULATE SUMMARY (TETAP)
+  // ============================================
+  private async recalculateSummary(konsentrasiId: number): Promise<void> {
+    this.logger.log(
+      `📊 Recalculating summary for Konsentrasi ID: ${konsentrasiId}`,
+    );
+    try {
+      const konsentrasi = await this.konsentrasiRepository.findOne({
+        where: { id: konsentrasiId },
+        relations: ['parameters', 'parameters.nilaiList'],
+      });
+      if (!konsentrasi) {
+        this.logger.warn(`⚠️ Konsentrasi with ID ${konsentrasiId} not found`);
+        return;
+      }
+
+      let totalWeighted = 0;
+      if (konsentrasi.parameters && konsentrasi.parameters.length > 0) {
+        for (const param of konsentrasi.parameters) {
+          const paramBobotFraction = (Number(param.bobot) || 0) / 100;
+          if (param.nilaiList && param.nilaiList.length > 0) {
+            for (const nilai of param.nilaiList) {
+              const nilaiBobotFraction = (Number(nilai.bobot) || 0) / 100;
+
+              // 1. Dapatkan Raw Value dari Judul Nilai
+              let rawValue = NaN;
+              let rawString: string | null = null;
+              const judul = nilai.judul || {};
+
+              if (judul.type === 'Tanpa Faktor') {
+                const v = judul.value;
+                const formula = (judul.formula || '').trim();
+                const parsed = this.parseNumber(v);
+                if (!isNaN(parsed)) {
+                  rawValue = formula ? this.evaluateFormula(formula, { pem: parsed }) : parsed;
+                } else if (typeof v === 'string' && v.trim() !== '') {
+                  rawString = v.trim().toLowerCase();
+                }
+              } else if (judul.type === 'Satu Faktor') {
+                const v = judul.valuePembilang;
+                const formula = (judul.formula || '').trim();
+                const parsed = this.parseNumber(v);
+                if (!isNaN(parsed)) {
+                  rawValue = formula ? this.evaluateFormula(formula, { pem: parsed }) : parsed;
+                } else if (typeof v === 'string' && v.trim() !== '') {
+                  rawString = v.trim().toLowerCase();
+                }
+              } else if (judul.type === 'Dua Faktor') {
+                const vPem = judul.valuePembilang;
+                const vPen = judul.valuePenyebut;
+                const formula = (judul.formula || '').trim();
+                const pem = this.parseNumber(vPem);
+                const pen = this.parseNumber(vPen);
+                if (!isNaN(pem) && !isNaN(pen)) {
+                  rawValue = formula ? this.evaluateFormula(formula, { pem, pen }) : pen !== 0 ? pem / pen : NaN;
+                } else if (typeof vPem === 'string' && vPem.trim() !== '') {
+                  rawString = vPem.trim().toLowerCase();
+                }
+              }
+
+              // 2. Tentukan Peringkat (1 - 5) berdasarkan rentang Risk Indicator
+              let peringkat: number | null = null;
+              const ri = nilai.riskindikator || {};
+              const ranges = [
+                { key: 'low', rank: 1 },
+                { key: 'lowToModerate', rank: 2 },
+                { key: 'moderate', rank: 3 },
+                { key: 'moderateToHigh', rank: 4 },
+                { key: 'high', rank: 5 },
+              ];
+
+              if (!isNaN(rawValue)) {
+                for (const { key, rank } of ranges) {
+                  const rawText = String(ri[key] ?? '');
+                  const nums = rawText.match(/-?\d+(\.\d+)?/g);
+                  if (!nums || nums.length === 0) continue;
+
+                  const hasPercent = rawText.includes('%');
+                  let min = -Infinity;
+                  let max = Infinity;
+
+                  if (nums.length === 1) {
+                    let n = Number(nums[0]);
+                    if (hasPercent) n = n / 100;
+                    if (/≤|<=/.test(rawText)) max = n;
+                    else if (/≥|>=/.test(rawText)) min = n;
+                    else if (/^[xX]?\s*>|>\s*\d+/i.test(rawText)) {
+                      min = n;
+                      max = Infinity;
+                    } else if (/^[xX]?\s*<|<\s*\d+/i.test(rawText)) {
+                      min = -Infinity;
+                      max = n;
+                    } else {
+                      min = n;
+                      max = n;
+                    }
+                  } else {
+                    let n1 = Number(nums[0]);
+                    let n2 = Number(nums[1]);
+                    if (hasPercent) {
+                      n1 = n1 / 100;
+                      n2 = n2 / 100;
+                    }
+                    min = Math.min(n1, n2);
+                    max = Math.max(n1, n2);
+                  }
+
+                  if (rawValue >= min && rawValue <= max) {
+                    peringkat = rank;
+                    break;
+                  }
+                }
+              }
+
+              if (isNaN(rawValue) && rawString) {
+                for (const { key, rank } of ranges) {
+                  const riValue = String(ri[key] ?? '').trim().toLowerCase();
+                  if (!riValue) continue;
+                  if (riValue === rawString) {
+                    peringkat = rank;
+                    break;
+                  }
+                }
+              }
+
+              if (peringkat !== null) {
+                totalWeighted += paramBobotFraction * nilaiBobotFraction * peringkat;
+              }
+            }
+          }
+        }
+      }
+
+      let summaryBg: string;
+      if (totalWeighted <= 1.67) summaryBg = 'bg-green-400 text-black';
+      else if (totalWeighted <= 2.33) summaryBg = 'bg-lime-300 text-black';
+      else if (totalWeighted <= 3.00) summaryBg = 'bg-yellow-400 text-black';
+      else if (totalWeighted <= 3.67) summaryBg = 'bg-orange-400 text-black';
+      else summaryBg = 'bg-red-500 text-white';
+
+      konsentrasi.summary = {
+        totalWeighted: Number(totalWeighted.toFixed(2)),
+        summaryBg,
+        computedAt: new Date(),
+      };
+      await this.konsentrasiRepository.save(konsentrasi);
+      this.logger.log(
+        `✅ Summary recalculated for Konsentrasi ID ${konsentrasiId}: totalWeighted=${totalWeighted.toFixed(2)}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `❌ Error recalculating summary for Konsentrasi ${konsentrasiId}: ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  // ============================================
+  // CRUD UTAMA (Konsentrasi)
+  // ============================================
+
+  async create(createDto: CreateKonsentrasiDto, userId: string) {
+    try {
+      const existing = await this.konsentrasiRepository.findOne({
         where: { year: createDto.year, quarter: createDto.quarter },
       });
 
       if (existing) {
         this.logger.warn(
-          `create: Data sudah ada untuk year ${createDto.year} quarter ${createDto.quarter}`,
+          `create: Data already exists for year ${createDto.year} quarter ${createDto.quarter}`,
         );
+        if (!existing.isActive) {
+          existing.isActive = true;
+          existing.updatedBy = userId;
+          existing.updatedAt = new Date();
+          await this.konsentrasiRepository.save(existing);
+        }
         return existing;
       }
 
-      const inherent = this.inherentRepository.create({
+      const konsentrasi = this.konsentrasiRepository.create({
         year: createDto.year,
         quarter: createDto.quarter,
         isActive: createDto.isActive ?? true,
         createdBy: userId,
         updatedBy: userId,
         version: createDto.version || '1.0.0',
+        summary: {
+          totalWeighted: 0,
+          summaryBg: 'bg-gray-400 text-black',
+          computedAt: new Date(),
+        },
       });
 
-      const saved = await this.inherentRepository.save(inherent);
-      this.logger.log(`create: Data berhasil dibuat - ID: ${saved.id}`);
-
+      const saved = await this.konsentrasiRepository.save(konsentrasi);
+      this.logger.log(`create: New data created - ID: ${saved.id}`);
       return saved;
     } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+        this.logger.warn(
+          `create: Duplicate entry detected. Fetching existing data.`,
+        );
+        const existing = await this.konsentrasiRepository.findOne({
+          where: { year: createDto.year, quarter: createDto.quarter },
+        });
+        if (existing) {
+          if (!existing.isActive) {
+            existing.isActive = true;
+            existing.updatedBy = userId;
+            await this.konsentrasiRepository.save(existing);
+          }
+          return existing;
+        }
+      }
       this.logger.error(
-        `Error creating KonsentrasiProdukOjk: ${error.message}`,
+        `Error creating Konsentrasi: ${error.message}`,
         error.stack,
       );
       throw error;
     }
   }
 
-  async findActive(): Promise<KonsentrasiProdukOjk | null> {
+  async findActive(): Promise<Konsentrasi | null> {
     this.logger.debug('findActive: Mencari data aktif');
-
     try {
-      const inherent = await this.inherentRepository.findOne({
+      const konsentrasi = await this.konsentrasiRepository.findOne({
         where: { isActive: true },
         relations: ['parameters', 'parameters.nilaiList'],
         order: {
-          parameters: {
-            orderIndex: 'ASC',
-            nilaiList: {
-              orderIndex: 'ASC',
-            },
-          },
+          parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
         },
       });
 
-      if (!inherent) {
+      if (!konsentrasi) {
         this.logger.warn('findActive: Tidak ada data aktif ditemukan');
         return null;
       }
-
-      this.logger.log(`findActive: Data ditemukan - ID: ${inherent.id}`);
-      return inherent;
+      this.logger.log(`findActive: Data ditemukan - ID: ${konsentrasi.id}`);
+      return konsentrasi;
     } catch (error) {
       this.logger.error(`findActive: Error - ${error.message}`, error.stack);
       throw error;
@@ -112,34 +334,26 @@ export class KonsentrasiProdukOjkService {
   async findByYearQuarter(
     year: number,
     quarter: number,
-  ): Promise<KonsentrasiProdukOjk | null> {
+  ): Promise<Konsentrasi | null> {
     this.logger.log(
       `findByYearQuarter: Mencari data - Year: ${year}, Quarter: ${quarter}`,
     );
-
     try {
-      const inherent = await this.inherentRepository.findOne({
+      const konsentrasi = await this.konsentrasiRepository.findOne({
         where: { year, quarter },
         relations: ['parameters', 'parameters.nilaiList'],
         order: {
-          parameters: {
-            orderIndex: 'ASC',
-            nilaiList: {
-              orderIndex: 'ASC',
-            },
-          },
+          parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
         },
       });
-
-      if (!inherent) {
-        this.logger.warn(
-          `findByYearQuarter: Data tidak ditemukan untuk Year: ${year}, Quarter: ${quarter}`,
-        );
+      if (!konsentrasi) {
+        this.logger.warn(`findByYearQuarter: Data tidak ditemukan`);
         return null;
       }
-
-      this.logger.log(`findByYearQuarter: Data ditemukan - ID: ${inherent.id}`);
-      return inherent;
+      this.logger.log(
+        `findByYearQuarter: Data ditemukan - ID: ${konsentrasi.id}`,
+      );
+      return konsentrasi;
     } catch (error) {
       this.logger.error(
         `findByYearQuarter: Error - ${error.message}`,
@@ -149,49 +363,62 @@ export class KonsentrasiProdukOjkService {
     }
   }
 
+  async findById(id: number): Promise<Konsentrasi | null> {
+    this.logger.log(`findById: Mencari data - ID: ${id}`);
+    try {
+      const konsentrasi = await this.konsentrasiRepository.findOne({
+        where: { id },
+        relations: ['parameters', 'parameters.nilaiList'],
+        order: {
+          parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
+        },
+      });
+      if (!konsentrasi) {
+        this.logger.warn(`findById: Data dengan ID ${id} tidak ditemukan`);
+        return null;
+      }
+      return konsentrasi;
+    } catch (error) {
+      this.logger.error(`findById: Error - ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
   async getAll() {
     this.logger.debug('getAll: Mendapatkan semua data');
-    return this.inherentRepository.find({
+    return this.konsentrasiRepository.find({
       relations: ['parameters'],
       order: { year: 'DESC', quarter: 'DESC' },
     });
   }
 
-  async update(
-    id: number,
-    updateDto: UpdateKonsentrasiProdukInherentDto,
-    userId: string,
-  ) {
+  async update(id: number, updateDto: UpdateKonsentrasiDto, userId: string) {
     this.logger.log(`update: Mengupdate data - ID: ${id}`);
-
-    const inherent = await this.inherentRepository.findOne({
+    const konsentrasi = await this.konsentrasiRepository.findOne({
       where: { id },
     });
-
-    if (!inherent) {
-      this.logger.error(`update: Data dengan ID ${id} tidak ditemukan`);
+    if (!konsentrasi) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
 
-    // Update field yang ada
-    if (updateDto.year !== undefined) inherent.year = updateDto.year;
-    if (updateDto.quarter !== undefined) inherent.quarter = updateDto.quarter;
+    if (updateDto.year !== undefined) konsentrasi.year = updateDto.year;
+    if (updateDto.quarter !== undefined)
+      konsentrasi.quarter = updateDto.quarter;
     if (updateDto.isActive !== undefined)
-      inherent.isActive = updateDto.isActive;
-    if (updateDto.summary !== undefined) inherent.summary = updateDto.summary;
+      konsentrasi.isActive = updateDto.isActive;
+    if (updateDto.summary !== undefined)
+      konsentrasi.summary = updateDto.summary;
     if (updateDto.isLocked !== undefined)
-      inherent.isLocked = updateDto.isLocked;
+      konsentrasi.isLocked = updateDto.isLocked;
     if (updateDto.lockedBy !== undefined)
-      inherent.lockedBy = updateDto.lockedBy;
+      konsentrasi.lockedBy = updateDto.lockedBy;
     if (updateDto.lockedAt !== undefined)
-      inherent.lockedAt = updateDto.lockedAt;
-    if (updateDto.notes !== undefined) inherent.notes = updateDto.notes;
+      konsentrasi.lockedAt = updateDto.lockedAt;
+    if (updateDto.notes !== undefined) konsentrasi.notes = updateDto.notes;
+    konsentrasi.updatedBy = userId;
 
-    inherent.updatedBy = userId;
-
-    const result = await this.inherentRepository.save(inherent);
+    const result = await this.konsentrasiRepository.save(konsentrasi);
     this.logger.log(`update: Data berhasil diupdate - ID: ${result.id}`);
-
     return result;
   }
 
@@ -200,205 +427,133 @@ export class KonsentrasiProdukOjkService {
     summaryDto: UpdateSummaryDto,
     userId: string,
   ) {
-    this.logger.log(`updateSummary: Mengupdate summary - ID: ${id}`);
-
-    const inherent = await this.inherentRepository.findOne({
+    const konsentrasi = await this.konsentrasiRepository.findOne({
       where: { id },
     });
-
-    if (!inherent) {
+    if (!konsentrasi)
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
-    }
-
-    inherent.summary = {
-      ...inherent.summary,
+    konsentrasi.summary = {
+      ...konsentrasi.summary,
       ...summaryDto,
       computedAt: new Date(),
     };
-    inherent.updatedBy = userId;
-
-    const result = await this.inherentRepository.save(inherent);
-    this.logger.log(
-      `updateSummary: Summary berhasil diupdate - ID: ${result.id}`,
-    );
-    return result;
+    konsentrasi.updatedBy = userId;
+    return this.konsentrasiRepository.save(konsentrasi);
   }
 
   async updateActiveStatus(id: number, isActive: boolean, userId: string) {
-    this.logger.log(
-      `updateActiveStatus: Mengupdate status aktif - ID: ${id}, isActive: ${isActive}`,
-    );
-
-    const inherent = await this.inherentRepository.findOne({
+    const konsentrasi = await this.konsentrasiRepository.findOne({
       where: { id },
     });
-
-    if (!inherent) {
-      this.logger.error(
-        `updateActiveStatus: Data dengan ID ${id} tidak ditemukan`,
-      );
+    if (!konsentrasi)
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
-    }
-
-    // Jika mengaktifkan satu, nonaktifkan yang lain
     if (isActive) {
-      this.logger.debug('updateActiveStatus: Menonaktifkan data lain');
-      await this.inherentRepository
+      await this.konsentrasiRepository
         .createQueryBuilder()
-        .update(KonsentrasiProdukOjk)
+        .update(Konsentrasi)
         .set({ isActive: false })
         .execute();
     }
-
-    inherent.isActive = isActive;
-    inherent.updatedBy = userId;
-
-    const result = await this.inherentRepository.save(inherent);
-    this.logger.log(
-      `updateActiveStatus: Status berhasil diupdate - ID: ${result.id}`,
-    );
-
-    return result;
+    konsentrasi.isActive = isActive;
+    konsentrasi.updatedBy = userId;
+    return this.konsentrasiRepository.save(konsentrasi);
   }
 
   async remove(id: number) {
-    this.logger.log(`remove: Menghapus data - ID: ${id}`);
-
-    const inherent = await this.inherentRepository.findOne({
+    const konsentrasi = await this.konsentrasiRepository.findOne({
       where: { id },
       relations: ['parameters', 'parameters.nilaiList'],
     });
-
-    if (!inherent) {
-      this.logger.error(`remove: Data dengan ID ${id} tidak ditemukan`);
+    if (!konsentrasi)
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
-    }
 
-    // Gunakan transaction untuk menghapus semua relasi
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      // Hapus semua nilai terlebih dahulu
-      for (const parameter of inherent.parameters || []) {
+      for (const parameter of konsentrasi.parameters || []) {
         await queryRunner.manager.delete(KonsentrasiNilai, {
           parameterId: parameter.id,
         });
       }
-
-      // Hapus semua parameter
       await queryRunner.manager.delete(KonsentrasiParameter, {
-        konsentrasiProdukOjkId: id,
+        konsentrasiId: id,
       });
-
-      // Hapus inherent
-      await queryRunner.manager.delete(KonsentrasiProdukOjk, { id });
-
+      await queryRunner.manager.delete(Konsentrasi, { id });
       await queryRunner.commitTransaction();
-      this.logger.log(`remove: Data berhasil dihapus - ID: ${id}`);
-
       return { message: 'Data berhasil dihapus', id };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`remove: Error - ${error.message}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
     }
   }
 
-  // === OPERASI PARAMETER ===
+  // ============================================
+  // OPERASI PARAMETER
+  // ============================================
 
   async addParameter(
-    inherentId: number,
+    konsentrasiId: number,
     createParamDto: CreateParameterDto,
     userId: string,
   ) {
     this.logger.log(
-      `addParameter: Menambahkan parameter - Inherent ID: ${inherentId}`,
+      `addParameter: Menambahkan parameter - Konsentrasi ID: ${konsentrasiId}`,
     );
-
-    const inherent = await this.inherentRepository.findOne({
-      where: { id: inherentId },
+    const konsentrasi = await this.konsentrasiRepository.findOne({
+      where: { id: konsentrasiId },
     });
-
-    if (!inherent) {
+    if (!konsentrasi)
       throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
+        `Data dengan ID ${konsentrasiId} tidak ditemukan`,
       );
-    }
 
-    // =========== VALIDASI YANG DIRELAKSASI UNTUK MODEL TERSTRUKTUR ===========
     if (createParamDto.kategori) {
       const kategori = createParamDto.kategori;
-
-      // Validasi untuk model 'open_end'
       if (kategori.model === KategoriModel.OPEN_END) {
-        if (!kategori.jenis) {
+        if (!kategori.jenis)
           throw new BadRequestException(
             'Untuk model "open_end", jenis reksa dana wajib dipilih',
           );
-        }
-        if (kategori.underlying && kategori.underlying.length > 0) {
+        if (kategori.underlying && kategori.underlying.length > 0)
           throw new BadRequestException(
             'Untuk model "open_end", aset dasar harus kosong',
           );
-        }
-        if (!kategori.prinsip) {
+        if (!kategori.prinsip)
           throw new BadRequestException(
             'Prinsip (syariah/konvensional) wajib dipilih untuk model "open_end"',
           );
-        }
       }
-
-      // Validasi untuk model 'terstruktur' - DIRELAKSASI
       if (kategori.model === KategoriModel.TERSTRUKTUR) {
-        if (kategori.jenis) {
+        if (kategori.jenis)
           throw new BadRequestException(
             'Untuk model "terstruktur", jenis harus kosong',
           );
-        }
-
-        // VALIDASI DIRELAKSASI: Tidak memaksa underlying harus ada
-        // Hanya warning jika tidak ada underlying
-        if (!kategori.underlying || kategori.underlying.length === 0) {
-          this.logger.warn(
-            `addParameter: Model "terstruktur" tanpa underlying untuk parameter "${createParamDto.judul}"`,
-          );
-          // Tidak throw error, hanya log warning
-        }
-
-        if (!kategori.prinsip) {
+        if (!kategori.prinsip)
           throw new BadRequestException(
             'Prinsip (syariah/konvensional) wajib dipilih untuk model "terstruktur"',
           );
-        }
       }
-
-      // Validasi untuk model 'tanpa_model'
       if (kategori.model === KategoriModel.TANPA_MODEL) {
         if (
           kategori.prinsip ||
           kategori.jenis ||
           (kategori.underlying && kategori.underlying.length > 0)
-        ) {
+        )
           throw new BadRequestException(
             'Untuk model "tanpa_model", prinsip, jenis, dan aset dasar harus kosong',
           );
-        }
       }
     }
 
-    // Cari orderIndex terakhir
     const lastParam = await this.parameterRepository.findOne({
-      where: { konsentrasiProdukOjkId: inherentId },
+      where: { konsentrasiId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastParam ? lastParam.orderIndex + 1 : 0;
 
-    // Format kategori dengan validasi yang lebih fleksibel untuk terstruktur
     const kategoriFormatted = createParamDto.kategori
       ? {
           model: createParamDto.kategori.model,
@@ -423,57 +578,40 @@ export class KonsentrasiProdukOjkService {
         judul: createParamDto.judul.trim(),
         bobot: createParamDto.bobot,
         kategori: kategoriFormatted,
-        konsentrasiProdukOjkId: inherentId,
+        konsentrasiId,
         orderIndex: createParamDto.orderIndex ?? orderIndex,
       });
-
       const savedParam = await this.parameterRepository.save(parameter);
-
-      this.logger.log(
-        `addParameter: Parameter berhasil ditambahkan - ID: ${savedParam.id}`,
-      );
-
-      // Update timestamp inherent
-      await this.inherentRepository.update(inherentId, {
+      await this.recalculateSummary(konsentrasiId);
+      await this.konsentrasiRepository.update(konsentrasiId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
       return savedParam;
     } catch (error: any) {
       this.logger.error('addParameter - Error saving parameter:', error);
-
-      if (error.code === '23502' || error.message.includes('null value')) {
+      if (error.code === '23502' || error.message.includes('null value'))
         throw new BadRequestException(
           'Error validasi: Pastikan semua field yang diperlukan terisi sesuai model yang dipilih',
         );
-      }
-
       throw error;
     }
   }
 
   async updateParameter(
-    inherentId: number,
+    konsentrasiId: number,
     parameterId: number,
     updateParamDto: UpdateParameterDto,
     userId: string,
   ) {
-    this.logger.log(
-      `updateParameter: Mengupdate parameter - ID: ${parameterId}`,
-    );
-
     const parameter = await this.parameterRepository.findOne({
-      where: { id: parameterId, konsentrasiProdukOjkId: inherentId },
+      where: { id: parameterId, konsentrasiId },
     });
-
-    if (!parameter) {
+    if (!parameter)
       throw new NotFoundException(
         `Parameter dengan ID ${parameterId} tidak ditemukan`,
       );
-    }
 
-    // Update field yang ada
     if (updateParamDto.nomor !== undefined)
       parameter.nomor = updateParamDto.nomor;
     if (updateParamDto.judul !== undefined)
@@ -485,60 +623,29 @@ export class KonsentrasiProdukOjkService {
 
     if (updateParamDto.kategori) {
       const kategori = updateParamDto.kategori;
-
-      // Validasi kategori untuk update dengan relaksasi untuk terstruktur
       if (kategori.model === KategoriModel.TERSTRUKTUR) {
-        if (!kategori.prinsip) {
-          throw new BadRequestException(
-            'Prinsip (syariah/konvensional) wajib dipilih untuk model "terstruktur"',
-          );
-        }
-
-        // VALIDASI DIRELAKSASI: Hanya warning jika tidak ada underlying
-        if (!kategori.underlying || kategori.underlying.length === 0) {
-          this.logger.warn(
-            `updateParameter: Model "terstruktur" tanpa underlying untuk parameter "${parameter.judul}"`,
-          );
-        }
-
-        if (kategori.jenis) {
-          throw new BadRequestException(
-            'Untuk model "terstruktur", jenis harus kosong',
-          );
-        }
+        if (!kategori.prinsip)
+          throw new BadRequestException('Prinsip wajib dipilih');
+        if (kategori.jenis) throw new BadRequestException('Jenis harus kosong');
       }
-
       if (kategori.model === KategoriModel.OPEN_END) {
-        if (!kategori.prinsip) {
-          throw new BadRequestException(
-            'Prinsip (syariah/konvensional) wajib dipilih untuk model "open_end"',
-          );
-        }
-        if (!kategori.jenis) {
-          throw new BadRequestException(
-            'Untuk model "open_end", jenis reksa dana wajib dipilih',
-          );
-        }
-        if (kategori.underlying && kategori.underlying.length > 0) {
-          throw new BadRequestException(
-            'Untuk model "open_end", aset dasar harus kosong',
-          );
-        }
+        if (!kategori.prinsip)
+          throw new BadRequestException('Prinsip wajib dipilih');
+        if (!kategori.jenis)
+          throw new BadRequestException('Jenis wajib dipilih');
+        if (kategori.underlying && kategori.underlying.length > 0)
+          throw new BadRequestException('Aset dasar harus kosong');
       }
-
       if (kategori.model === KategoriModel.TANPA_MODEL) {
         if (
           kategori.prinsip ||
           kategori.jenis ||
           (kategori.underlying && kategori.underlying.length > 0)
-        ) {
+        )
           throw new BadRequestException(
-            'Untuk model "tanpa_model", prinsip, jenis, dan aset dasar harus kosong',
+            'Prinsip, jenis, dan aset dasar harus kosong',
           );
-        }
       }
-
-      // Update kategori dengan format yang benar
       parameter.kategori = {
         model: kategori.model,
         prinsip:
@@ -558,139 +665,95 @@ export class KonsentrasiProdukOjkService {
 
     try {
       const updated = await this.parameterRepository.save(parameter);
-
-      // Update timestamp inherent
-      await this.inherentRepository.update(inherentId, {
+      await this.recalculateSummary(konsentrasiId);
+      await this.konsentrasiRepository.update(konsentrasiId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
-      this.logger.log(
-        `updateParameter: Parameter berhasil diupdate - ID: ${updated.id}`,
-      );
       return updated;
     } catch (error: any) {
-      this.logger.error('updateParameter - Error:', error);
       throw error;
     }
   }
 
   async reorderParameters(
-    inherentId: number,
+    konsentrasiId: number,
     reorderDto: ReorderParametersDto,
   ) {
-    this.logger.log(
-      `reorderParameters: Mengurutkan parameter - Inherent ID: ${inherentId}`,
-    );
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      for (let i = 0; i < reorderDto.parameterIds.length; i++) {
-        const parameterId = reorderDto.parameterIds[i];
+      for (let i = 0; i < reorderDto.parameterIds.length; i++)
         await queryRunner.manager.update(
           KonsentrasiParameter,
-          { id: parameterId, konsentrasiProdukOjkId: inherentId },
+          { id: reorderDto.parameterIds[i], konsentrasiId },
           { orderIndex: i },
         );
-      }
-
       await queryRunner.commitTransaction();
-      this.logger.log(
-        `reorderParameters: Parameter berhasil diurutkan - Inherent ID: ${inherentId}`,
-      );
-
       return { message: 'Parameter berhasil diurutkan' };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `reorderParameters: Error - ${error.message}`,
-        error.stack,
-      );
       throw error;
     } finally {
       await queryRunner.release();
     }
   }
 
-  async copyParameter(inherentId: number, parameterId: number, userId: string) {
-    this.logger.log(`copyParameter: Menyalin parameter - ID: ${parameterId}`);
-
+  async copyParameter(
+    konsentrasiId: number,
+    parameterId: number,
+    userId: string,
+  ) {
     const originalParam = await this.parameterRepository.findOne({
-      where: { id: parameterId, konsentrasiProdukOjkId: inherentId },
+      where: { id: parameterId, konsentrasiId },
       relations: ['nilaiList'],
     });
-
-    if (!originalParam) {
+    if (!originalParam)
       throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
+        `Parameter ID ${parameterId} tidak ditemukan`,
       );
-    }
 
-    // Cari orderIndex terakhir
     const lastParam = await this.parameterRepository.findOne({
-      where: { konsentrasiProdukOjkId: inherentId },
+      where: { konsentrasiId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastParam ? lastParam.orderIndex + 1 : 0;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      // Buat parameter baru
       const newParam = this.parameterRepository.create({
         nomor: originalParam.nomor,
         judul: `${originalParam.judul} (Copy)`,
         bobot: originalParam.bobot,
         kategori: originalParam.kategori,
-        konsentrasiProdukOjkId: inherentId,
+        konsentrasiId,
         orderIndex,
       });
-
-      const savedParam = await queryRunner.manager.save(
+      const savedParam: any = await queryRunner.manager.save(
         KonsentrasiParameter,
         newParam,
       );
-
-      // Copy semua nilai jika ada
-      if (originalParam.nilaiList && originalParam.nilaiList.length > 0) {
-        const nilaiPromises = originalParam.nilaiList.map(async (nilai) => {
-          const newNilai = {
-            nomor: nilai.nomor,
-            judul: nilai.judul,
-            bobot: nilai.bobot,
-            portofolio: nilai.portofolio,
-            keterangan: nilai.keterangan,
-            riskindikator: nilai.riskindikator,
+      if (originalParam.nilaiList?.length)
+        for (const nilai of originalParam.nilaiList) {
+          const { id, ...nilaiWithoutId } = nilai;
+          await queryRunner.manager.save(KonsentrasiNilai, {
+            ...nilaiWithoutId,
             parameterId: savedParam.id,
-            orderIndex: nilai.orderIndex,
-          };
-          return queryRunner.manager.save(KonsentrasiNilai, newNilai);
-        });
-
-        await Promise.all(nilaiPromises);
-      }
+          });
+        }
 
       await queryRunner.commitTransaction();
-
-      // Update timestamp inherent
-      await this.inherentRepository.update(inherentId, {
+      await this.recalculateSummary(konsentrasiId);
+      await this.konsentrasiRepository.update(konsentrasiId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
-      this.logger.log(
-        `copyParameter: Parameter berhasil disalin - New ID: ${savedParam.id}`,
-      );
       return savedParam;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`copyParameter: Error - ${error.message}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -698,106 +761,74 @@ export class KonsentrasiProdukOjkService {
   }
 
   async removeParameter(
-    inherentId: number,
+    konsentrasiId: number,
     parameterId: number,
     userId: string,
   ) {
-    this.logger.log(
-      `removeParameter: Menghapus parameter - ID: ${parameterId}`,
-    );
-
     const parameter = await this.parameterRepository.findOne({
-      where: { id: parameterId, konsentrasiProdukOjkId: inherentId },
+      where: { id: parameterId, konsentrasiId },
       relations: ['nilaiList'],
     });
-
-    if (!parameter) {
+    if (!parameter)
       throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
+        `Parameter ID ${parameterId} tidak ditemukan`,
       );
-    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      // Hapus semua nilai terlebih dahulu
-      if (parameter.nilaiList && parameter.nilaiList.length > 0) {
-        await queryRunner.manager.delete(KonsentrasiNilai, {
-          parameterId: parameterId,
-        });
-      }
-
-      // Hapus parameter
+      if (parameter.nilaiList?.length)
+        await queryRunner.manager.delete(KonsentrasiNilai, { parameterId });
       await queryRunner.manager.delete(KonsentrasiParameter, {
         id: parameterId,
       });
-
       await queryRunner.commitTransaction();
-
-      // Update timestamp inherent
-      await this.inherentRepository.update(inherentId, {
+      await this.recalculateSummary(konsentrasiId);
+      await this.konsentrasiRepository.update(konsentrasiId, {
         updatedBy: userId,
         updatedAt: new Date(),
       });
-
-      this.logger.log(
-        `removeParameter: Parameter berhasil dihapus - ID: ${parameterId}`,
-      );
       return { message: 'Parameter berhasil dihapus', parameterId };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `removeParameter: Error - ${error.message}`,
-        error.stack,
-      );
       throw error;
     } finally {
       await queryRunner.release();
     }
   }
 
-  // === OPERASI NILAI ===
+  // ============================================
+  // OPERASI NILAI
+  // ============================================
 
   async addNilai(
-    inherentId: number,
+    konsentrasiId: number,
     parameterId: number,
     createNilaiDto: CreateNilaiDto,
     userId: string,
   ) {
-    this.logger.log(
-      `addNilai: Menambahkan nilai - Parameter ID: ${parameterId}`,
-    );
-
     const parameter = await this.parameterRepository.findOne({
-      where: { id: parameterId, konsentrasiProdukOjkId: inherentId },
+      where: { id: parameterId, konsentrasiId },
     });
-
-    if (!parameter) {
+    if (!parameter)
       throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
+        `Parameter ID ${parameterId} tidak ditemukan`,
       );
-    }
-
-    // Validasi judul.text - PERBAIKAN: handle optional
-    const judulText = createNilaiDto.judul?.text;
-    if (!judulText || judulText.trim() === '') {
+    if (!createNilaiDto.judul?.text?.trim())
       throw new BadRequestException('Judul nilai wajib diisi');
-    }
 
     const lastNilai = await this.nilaiRepository.findOne({
-      where: { parameterId: parameterId },
+      where: { parameterId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastNilai ? lastNilai.orderIndex + 1 : 0;
 
-    const nilai = {
+    const nilai = this.nilaiRepository.create({
       nomor: createNilaiDto.nomor || '',
       judul: {
         type: createNilaiDto.judul?.type || JudulType.TANPA_FAKTOR,
-        text: judulText.trim(),
+        text: createNilaiDto.judul.text.trim(),
         value: createNilaiDto.judul?.value ?? null,
         pembilang: createNilaiDto.judul?.pembilang || '',
         valuePembilang: createNilaiDto.judul?.valuePembilang ?? null,
@@ -816,50 +847,34 @@ export class KonsentrasiProdukOjkService {
         moderateToHigh: '',
         high: '',
       },
-      parameterId: parameterId,
+      parameterId,
       orderIndex: createNilaiDto.orderIndex ?? orderIndex,
-    };
-
-    const savedNilai = await this.nilaiRepository.save(nilai);
-
-    // Update timestamp inherent
-    await this.inherentRepository.update(inherentId, {
+    });
+    const saved = await this.nilaiRepository.save(nilai);
+    await this.recalculateSummary(konsentrasiId);
+    await this.konsentrasiRepository.update(konsentrasiId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(
-      `addNilai: Nilai berhasil ditambahkan - ID: ${savedNilai.id}`,
-    );
-    return savedNilai;
+    return saved;
   }
 
   async updateNilai(
-    inherentId: number,
+    konsentrasiId: number,
     parameterId: number,
     nilaiId: number,
     updateNilaiDto: UpdateNilaiDto,
     userId: string,
   ) {
-    this.logger.log(`updateNilai: Mengupdate nilai - ID: ${nilaiId}`);
-
     const nilai = await this.nilaiRepository.findOne({
-      where: { id: nilaiId, parameterId: parameterId },
+      where: { id: nilaiId, parameterId },
       relations: ['parameter'],
     });
+    if (!nilai)
+      throw new NotFoundException(`Nilai ID ${nilaiId} tidak ditemukan`);
+    if (nilai.parameter.konsentrasiId !== konsentrasiId)
+      throw new BadRequestException('Nilai tidak termasuk dalam konsentrasi');
 
-    if (!nilai) {
-      throw new NotFoundException(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-    }
-
-    // Cek apakah parameter milik inherent yang benar
-    if (nilai.parameter.konsentrasiProdukOjkId !== inherentId) {
-      throw new BadRequestException(
-        'Nilai tidak termasuk dalam inherent yang dimaksud',
-      );
-    }
-
-    // Update field yang ada
     if (updateNilaiDto.nomor !== undefined) nilai.nomor = updateNilaiDto.nomor;
     if (updateNilaiDto.bobot !== undefined) nilai.bobot = updateNilaiDto.bobot;
     if (updateNilaiDto.portofolio !== undefined)
@@ -868,66 +883,44 @@ export class KonsentrasiProdukOjkService {
       nilai.keterangan = updateNilaiDto.keterangan;
     if (updateNilaiDto.orderIndex !== undefined)
       nilai.orderIndex = updateNilaiDto.orderIndex;
-
-    if (updateNilaiDto.riskindikator) {
+    if (updateNilaiDto.riskindikator)
       nilai.riskindikator = {
         ...nilai.riskindikator,
         ...updateNilaiDto.riskindikator,
       };
-    }
-
-    // Update judul object secara parsial
-    if (updateNilaiDto.judul) {
+    if (updateNilaiDto.judul)
       nilai.judul = {
         ...nilai.judul,
         ...updateNilaiDto.judul,
-        // Handle text update dengan safety check
         ...(updateNilaiDto.judul.text && {
           text: updateNilaiDto.judul.text.trim(),
         }),
       };
-    }
 
     const updated = await this.nilaiRepository.save(nilai);
-
-    // Update timestamp inherent
-    await this.inherentRepository.update(inherentId, {
+    await this.recalculateSummary(konsentrasiId);
+    await this.konsentrasiRepository.update(konsentrasiId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(`updateNilai: Nilai berhasil diupdate - ID: ${updated.id}`);
     return updated;
   }
 
   async reorderNilai(parameterId: number, reorderDto: ReorderNilaiDto) {
-    this.logger.log(
-      `reorderNilai: Mengurutkan nilai - Parameter ID: ${parameterId}`,
-    );
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      for (let i = 0; i < reorderDto.nilaiIds.length; i++) {
-        const nilaiId = reorderDto.nilaiIds[i];
+      for (let i = 0; i < reorderDto.nilaiIds.length; i++)
         await queryRunner.manager.update(
           KonsentrasiNilai,
-          { id: nilaiId, parameterId: parameterId },
+          { id: reorderDto.nilaiIds[i], parameterId },
           { orderIndex: i },
         );
-      }
-
       await queryRunner.commitTransaction();
-      this.logger.log(
-        `reorderNilai: Nilai berhasil diurutkan - Parameter ID: ${parameterId}`,
-      );
-
       return { message: 'Nilai berhasil diurutkan' };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`reorderNilai: Error - ${error.message}`, error.stack);
       throw error;
     } finally {
       await queryRunner.release();
@@ -935,214 +928,152 @@ export class KonsentrasiProdukOjkService {
   }
 
   async copyNilai(
-    inherentId: number,
+    konsentrasiId: number,
     parameterId: number,
     nilaiId: number,
     userId: string,
   ) {
-    this.logger.log(`copyNilai: Menyalin nilai - ID: ${nilaiId}`);
-
     const originalNilai = await this.nilaiRepository.findOne({
-      where: { id: nilaiId, parameterId: parameterId },
+      where: { id: nilaiId, parameterId },
     });
-
-    if (!originalNilai) {
-      throw new NotFoundException(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-    }
+    if (!originalNilai)
+      throw new NotFoundException(`Nilai ID ${nilaiId} tidak ditemukan`);
 
     const lastNilai = await this.nilaiRepository.findOne({
-      where: { parameterId: parameterId },
+      where: { parameterId },
       order: { orderIndex: 'DESC' },
     });
-
     const orderIndex = lastNilai ? lastNilai.orderIndex + 1 : 0;
 
-    const newNilai = {
-      nomor: originalNilai.nomor,
+    const { id, ...nilaiWithoutId } = originalNilai;
+    const newNilai = this.nilaiRepository.create({
+      ...nilaiWithoutId,
       judul: {
         ...originalNilai.judul,
         text: `${originalNilai.judul?.text || ''} (Copy)`,
       },
-      bobot: originalNilai.bobot,
-      portofolio: originalNilai.portofolio,
-      keterangan: originalNilai.keterangan,
-      riskindikator: originalNilai.riskindikator,
-      parameterId: parameterId,
+      parameterId,
       orderIndex,
-    };
-
-    const savedNilai = await this.nilaiRepository.save(newNilai);
-
-    // Update timestamp inherent
-    await this.inherentRepository.update(inherentId, {
+    });
+    const saved = await this.nilaiRepository.save(newNilai);
+    await this.recalculateSummary(konsentrasiId);
+    await this.konsentrasiRepository.update(konsentrasiId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(
-      `copyNilai: Nilai berhasil disalin - New ID: ${savedNilai.id}`,
-    );
-    return savedNilai;
+    return saved;
   }
 
   async removeNilai(
-    inherentId: number,
+    konsentrasiId: number,
     parameterId: number,
     nilaiId: number,
     userId: string,
   ) {
-    this.logger.log(`removeNilai: Menghapus nilai - ID: ${nilaiId}`);
-
     const nilai = await this.nilaiRepository.findOne({
-      where: { id: nilaiId, parameterId: parameterId },
+      where: { id: nilaiId, parameterId },
       relations: ['parameter'],
     });
-
-    if (!nilai) {
-      throw new NotFoundException(`Nilai dengan ID ${nilaiId} tidak ditemukan`);
-    }
-
-    // Cek apakah parameter milik inherent yang benar
-    if (nilai.parameter.konsentrasiProdukOjkId !== inherentId) {
-      throw new BadRequestException(
-        'Nilai tidak termasuk dalam inherent yang dimaksud',
-      );
-    }
+    if (!nilai)
+      throw new NotFoundException(`Nilai ID ${nilaiId} tidak ditemukan`);
+    if (nilai.parameter.konsentrasiId !== konsentrasiId)
+      throw new BadRequestException('Nilai tidak termasuk dalam konsentrasi');
 
     await this.nilaiRepository.delete({ id: nilaiId });
-
-    // Update timestamp inherent
-    await this.inherentRepository.update(inherentId, {
+    await this.recalculateSummary(konsentrasiId);
+    await this.konsentrasiRepository.update(konsentrasiId, {
       updatedBy: userId,
       updatedAt: new Date(),
     });
-
-    this.logger.log(`removeNilai: Nilai berhasil dihapus - ID: ${nilaiId}`);
     return { message: 'Nilai berhasil dihapus', nilaiId };
   }
 
-  // === REFERENCE DATA ===
+  // ============================================
+  // REFERENCE DATA
+  // ============================================
 
   async getReferences(type?: string) {
-    this.logger.debug(
-      `getReferences: Mendapatkan referensi - Type: ${type || 'all'}`,
-    );
-
     const query = this.referenceRepository
       .createQueryBuilder('ref')
       .where('ref.isActive = :isActive', { isActive: true });
-
-    if (type) {
-      query.andWhere('ref.type = :type', { type });
-    }
-
+    if (type) query.andWhere('ref.type = :type', { type });
     query.orderBy('ref.order', 'ASC');
-
     return query.getMany();
   }
 
-  // === VALIDASI TAMBAHAN UNTUK MODEL TERSTRUKTUR ===
-  async validateModelTerstruktur(inherentId: number): Promise<{
-    isValid: boolean;
-    warnings: string[];
-    errors: string[];
-  }> {
+  // ============================================
+  // VALIDASI MODEL TERSTRUKTUR
+  // ============================================
+
+  async validateModelTerstruktur(
+    konsentrasiId: number,
+  ): Promise<{ isValid: boolean; warnings: string[]; errors: string[] }> {
     const result = {
       isValid: true,
       warnings: [] as string[],
       errors: [] as string[],
     };
-
-    const inherent = await this.inherentRepository.findOne({
-      where: { id: inherentId },
+    const konsentrasi = await this.konsentrasiRepository.findOne({
+      where: { id: konsentrasiId },
       relations: ['parameters'],
     });
-
-    if (!inherent) {
-      result.errors.push(`Data dengan ID ${inherentId} tidak ditemukan`);
+    if (!konsentrasi) {
+      result.errors.push(`Data ID ${konsentrasiId} tidak ditemukan`);
       result.isValid = false;
       return result;
     }
-
-    // Cek parameter dengan model terstruktur
     const terstrukturParams =
-      inherent.parameters?.filter(
-        (param) => param.kategori?.model === KategoriModel.TERSTRUKTUR,
+      konsentrasi.parameters?.filter(
+        (p) => p.kategori?.model === KategoriModel.TERSTRUKTUR,
       ) || [];
-
-    terstrukturParams.forEach((param, index) => {
-      // Validasi prinsip
+    terstrukturParams.forEach((param) => {
       if (!param.kategori?.prinsip) {
-        result.errors.push(
-          `Parameter "${param.judul}" (model terstruktur) harus memiliki prinsip`,
-        );
+        result.errors.push(`Parameter "${param.judul}" harus memiliki prinsip`);
         result.isValid = false;
       }
-
-      // Validasi underlying - hanya warning jika kosong
-      if (
-        !param.kategori?.underlying ||
-        param.kategori.underlying.length === 0
-      ) {
+      if (!param.kategori?.underlying || param.kategori.underlying.length === 0)
         result.warnings.push(
-          `Parameter "${param.judul}" (model terstruktur) tidak memiliki aset dasar`,
+          `Parameter "${param.judul}" tidak memiliki aset dasar`,
         );
-      }
-
-      // Validasi jenis - harus kosong
       if (param.kategori?.jenis) {
         result.errors.push(
-          `Parameter "${param.judul}" (model terstruktur) seharusnya tidak memiliki jenis`,
+          `Parameter "${param.judul}" seharusnya tidak memiliki jenis`,
         );
         result.isValid = false;
       }
     });
-
-    this.logger.log(
-      `validateModelTerstruktur: Validasi selesai - ${result.errors.length} errors, ${result.warnings.length} warnings`,
-    );
-
     return result;
   }
 
-  // === IMPORT/EXPORT ===
+  // ============================================
+  // IMPORT/EXPORT
+  // ============================================
 
-  async exportToExcel(inherentId: number) {
-    this.logger.log(`exportToExcel: Mengekspor ke Excel - ID: ${inherentId}`);
-
-    const inherent = await this.inherentRepository.findOne({
-      where: { id: inherentId },
+  async exportToExcel(konsentrasiId: number) {
+    const konsentrasi = await this.konsentrasiRepository.findOne({
+      where: { id: konsentrasiId },
       relations: ['parameters', 'parameters.nilaiList'],
       order: {
-        parameters: {
-          orderIndex: 'ASC',
-          nilaiList: {
-            orderIndex: 'ASC',
-          },
-        },
+        parameters: { orderIndex: 'ASC', nilaiList: { orderIndex: 'ASC' } },
       },
     });
+    if (!konsentrasi)
+      throw new NotFoundException(`Data ID ${konsentrasiId} tidak ditemukan`);
 
-    if (!inherent) {
-      throw new NotFoundException(
-        `Data dengan ID ${inherentId} tidak ditemukan`,
-      );
-    }
-
-    const exportData = {
+    return {
       metadata: {
-        year: inherent.year,
-        quarter: inherent.quarter,
+        year: konsentrasi.year,
+        quarter: konsentrasi.quarter,
         exportedAt: new Date().toISOString(),
-        totalParameters: inherent.parameters?.length || 0,
+        totalParameters: konsentrasi.parameters?.length || 0,
         totalNilai:
-          inherent.parameters?.reduce(
+          konsentrasi.parameters?.reduce(
             (total, param) => total + (param.nilaiList?.length || 0),
             0,
           ) || 0,
       },
       parameters:
-        inherent.parameters?.map((param) => ({
+        konsentrasi.parameters?.map((param) => ({
           id: param.id,
           nomor: param.nomor,
           judul: param.judul,
@@ -1162,51 +1093,41 @@ export class KonsentrasiProdukOjkService {
             })) || [],
         })) || [],
     };
-
-    this.logger.log(
-      `exportToExcel: Data berhasil diekspor - Jumlah parameter: ${exportData.metadata.totalParameters}`,
-    );
-    return exportData;
   }
 
   async importFromExcel(importData: any, userId: string) {
-    this.logger.log('importFromExcel: Mengimpor data dari Excel');
-
-    if (!importData.parameters || !Array.isArray(importData.parameters)) {
+    if (!importData.parameters || !Array.isArray(importData.parameters))
       throw new BadRequestException('Format data tidak valid');
-    }
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
     try {
-      // Deactivate semua data sebelumnya
       await queryRunner.manager.update(
-        KonsentrasiProdukOjk,
+        Konsentrasi,
         { isActive: true },
         { isActive: false },
       );
 
-      // Buat inherent baru
-      const inherent = {
+      const konsentrasi = {
         year: importData.metadata?.year || new Date().getFullYear(),
         quarter: importData.metadata?.quarter || 1,
-        summary: importData.summary,
+        summary: importData.summary || {
+          totalWeighted: 0,
+          summaryBg: 'bg-gray-400 text-black',
+          computedAt: new Date(),
+        },
         isActive: true,
         createdBy: userId,
         updatedBy: userId,
       };
-
-      const savedInherent = await queryRunner.manager.save(
-        KonsentrasiProdukOjk,
-        inherent,
+      const savedKonsentrasi: any = await queryRunner.manager.save(
+        Konsentrasi,
+        konsentrasi,
       );
 
-      // Import parameters
       for (let i = 0; i < importData.parameters.length; i++) {
         const paramData = importData.parameters[i];
-
         const parameter = {
           nomor: paramData.nomor || '',
           judul: paramData.judul || '',
@@ -1217,21 +1138,18 @@ export class KonsentrasiProdukOjkService {
             jenis: '' as KategoriJenis,
             underlying: [],
           },
-          konsentrasiProdukOjkId: savedInherent.id,
+          konsentrasiId: savedKonsentrasi.id,
           orderIndex: paramData.orderIndex || i,
         };
-
-        const savedParam = await queryRunner.manager.save(
+        const savedParam: any = await queryRunner.manager.save(
           KonsentrasiParameter,
           parameter,
         );
 
-        // Import nilai
         if (paramData.nilaiList && Array.isArray(paramData.nilaiList)) {
           for (let j = 0; j < paramData.nilaiList.length; j++) {
             const nilaiData = paramData.nilaiList[j];
-
-            const nilai = {
+            await queryRunner.manager.save(KonsentrasiNilai, {
               nomor: nilaiData.nomor || '',
               judul: nilaiData.judul || {
                 type: JudulType.TANPA_FAKTOR,
@@ -1256,25 +1174,15 @@ export class KonsentrasiProdukOjkService {
               },
               parameterId: savedParam.id,
               orderIndex: nilaiData.orderIndex || j,
-            };
-
-            await queryRunner.manager.save(KonsentrasiNilai, nilai);
+            });
           }
         }
       }
-
       await queryRunner.commitTransaction();
-
-      this.logger.log(
-        `importFromExcel: Data berhasil diimpor - ID: ${savedInherent.id}, Jumlah parameter: ${importData.parameters.length}`,
-      );
-      return savedInherent;
+      await this.recalculateSummary(savedKonsentrasi.id);
+      return savedKonsentrasi;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(
-        `importFromExcel: Error - ${error.message}`,
-        error.stack,
-      );
       throw error;
     } finally {
       await queryRunner.release();

@@ -24,7 +24,7 @@ import {
 } from '@nestjs/swagger';
 
 // PERBAIKAN: Import service dengan path yang benar
-import { KpmrLikuiditasService } from './likuiditas-produk-kpmr.service';
+import { KpmrLikuiditasProdukService } from './likuiditas-produk-kpmr.service';
 
 import {
   CreateKpmrLikuiditasOjkDto,
@@ -44,10 +44,10 @@ import {
 } from './dto/likuiditas-kpmr.dto';
 
 @ApiTags('LikuiditasKpmr')
-@Controller('kpmr-likuiditas')
+@Controller('kpmr-likuiditas-produk')
 @UseInterceptors(ClassSerializerInterceptor)
 export class KpmrLikuiditasController {
-  constructor(private readonly kpmrService: KpmrLikuiditasService) {}
+  constructor(private readonly kpmrService: KpmrLikuiditasProdukService) {}
 
   // ========== KPMR ENDPOINTS ==========
   @Post()
@@ -419,7 +419,7 @@ export class KpmrLikuiditasController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
-    // ✅ PANGGIL METHOD VALIDATE DENGAN ID
+
     return this.kpmrService.validateKpmrData(idNum);
   }
 

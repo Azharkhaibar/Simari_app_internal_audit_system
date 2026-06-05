@@ -1,23 +1,25 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ReputasiOjkService } from './reputasi-ojk.service';
-import { ReputasiOjkController } from './reputasi-ojk.controller';
-import { ReputasiOjk } from './entities/reputasi-ojk.entity';
-import { ReputasiParameter } from './entities/reputasi-paramater.entity';
+
+import { ReputasiController } from './reputasi-ojk.controller';
+import { Reputasi } from './entities/reputasi-ojk.entity';
+import { ReputasiParameter } from './entities/reputasi-parameter.entity';
 import { ReputasiNilai } from './entities/reputasi-nilai.entity';
 import { ReputasiReference } from './entities/reputasi-inherent-references.entity';
+import { ReputasiService } from './reputasi-ojk.service';
+
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      ReputasiOjk,
+      Reputasi,
       ReputasiParameter,
       ReputasiNilai,
       ReputasiReference,
     ]),
   ],
-  controllers: [ReputasiOjkController],
-  providers: [ReputasiOjkService],
-  exports: [ReputasiOjkService],
+  controllers: [ReputasiController],
+  providers: [ReputasiService],
+  exports: [ReputasiService],
 })
 export class ReputasiOjkModule {}

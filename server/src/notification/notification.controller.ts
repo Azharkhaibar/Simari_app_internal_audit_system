@@ -14,6 +14,7 @@ import {
   ValidationPipe,
   NotFoundException,
   Inject,
+  UseGuards,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { NotificationGateway } from './notification.gateway';
@@ -21,8 +22,10 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { UserStatusDto } from './dto/user-status.dto';
 import { GetUser } from './decorator/get-user.decorator';
+import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 
 @Controller('notifications')
+@UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 export class NotificationController {
   private readonly logger = new Logger(NotificationController.name);
@@ -128,7 +131,7 @@ export class NotificationController {
 
     const dto = {
       ...createNotificationDto,
-      user_id: createNotificationDto.user_id || userId,
+      user_id: createNotificationDto.user_id !== undefined ? createNotificationDto.user_id : userId,
     };
 
     const notification = await this.notificationService.create(dto);
@@ -139,15 +142,6 @@ export class NotificationController {
       metadata: notification.metadata,
       hasMetadata: !!notification.metadata,
     });
-
-    if (notification.user_id) {
-      this.notificationGateway.sendNotificationToUser(
-        notification.user_id,
-        notification,
-      );
-    } else {
-      this.notificationGateway.sendNotificationToAll(notification);
-    }
 
     return notification;
   }
@@ -161,18 +155,6 @@ export class NotificationController {
       createNotificationDtos,
     );
 
-    // ✅ KIRIM REALTIME UNTUK MASING-MASING NOTIFIKASI
-    notifications.forEach((notification) => {
-      if (notification.user_id) {
-        this.notificationGateway.sendNotificationToUser(
-          notification.user_id,
-          notification,
-        );
-      } else {
-        this.notificationGateway.sendNotificationToAll(notification);
-      }
-    });
-
     return notifications;
   }
 
@@ -180,9 +162,6 @@ export class NotificationController {
   async broadcast(@Body() dto: CreateNotificationDto) {
     this.logger.log('Creating broadcast notification');
     const notification = await this.notificationService.create(dto);
-
-    // ✅ BROADCAST KE SEMUA USER
-    this.notificationGateway.sendNotificationToAll(notification);
 
     return notification;
   }
@@ -215,7 +194,6 @@ export class NotificationController {
       userStatusDto.userId,
       userStatusDto.status,
     );
-    this.notificationGateway.sendNotificationToAll(notification);
 
     return notification;
   }

@@ -1,3 +1,4 @@
+// pasar-produk-kpmr.dto.ts
 import {
   IsInt,
   Min,
@@ -35,64 +36,59 @@ export enum RatingEnum {
   UNSATISFACTORY = 'Unsatisfactory',
 }
 
-// ==================== HELPER TRANSFORMERS - PERBAIKAN ====================
+// ==================== HELPER TRANSFORMERS ====================
 const transformNumber = ({ value }) => {
-  // Handle null, undefined, empty string
   if (value === null || value === undefined || value === '') {
     return undefined;
   }
-
-  // Handle string 'undefined', 'null'
   if (value === 'undefined' || value === 'null') {
     return undefined;
   }
-
-  // Handle jika sudah number
   if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
     return value;
   }
-
   const num = Number(value);
-
-  // Handle NaN atau Infinity
   if (isNaN(num) || !isFinite(num)) {
     return undefined;
   }
-
   return num;
 };
 
 const transformQuarter = ({ value }) => {
   if (!value && value !== 0) return undefined;
-
-  // Jika sudah dalam format Q1-Q4
   if (typeof value === 'string') {
     const upper = value.trim().toUpperCase();
     if (['Q1', 'Q2', 'Q3', 'Q4'].includes(upper)) {
       return upper;
     }
   }
-
-  // Jika berupa number 1-4
   const num = Number(value);
   if (!isNaN(num) && num >= 1 && num <= 4) {
     return `Q${num}`;
   }
-
-  // Jika string "1", "2", "3", "4"
   if (typeof value === 'string') {
     const parsed = parseInt(value, 10);
     if (!isNaN(parsed) && parsed >= 1 && parsed <= 4) {
       return `Q${parsed}`;
     }
   }
-
   return undefined;
 };
 
 const transformIdToString = ({ value }) => {
-  if (value === null || value === undefined) return undefined;
-  return value.toString();
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value.toString();
+  }
+  if (typeof value === 'object' && value !== null && value.id) {
+    return value.id.toString();
+  }
+  return undefined;
 };
 
 // ==================== SUBCLASSES ====================
@@ -200,7 +196,7 @@ export class KpmrSummaryDto {
 }
 
 // ==================== MAIN DTOs ====================
-export class CreateKpmrPasarOjkDto {
+export class CreateKpmrPasarProdukOjkDto {
   @ApiProperty({ description: 'Tahun KPMR', example: 2024 })
   @IsInt()
   @Min(2000)
@@ -243,17 +239,17 @@ export class CreateKpmrPasarOjkDto {
   summary?: KpmrSummaryDto;
 
   @ApiPropertyOptional({
-    type: () => [CreateKpmrAspekPasarDto],
+    type: () => [CreateKpmrAspekPasarProdukDto],
     description: 'Daftar aspek',
   })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateKpmrAspekPasarDto)
-  aspekList?: CreateKpmrAspekPasarDto[];
+  @Type(() => CreateKpmrAspekPasarProdukDto)
+  aspekList?: CreateKpmrAspekPasarProdukDto[];
 }
 
-export class UpdateKpmrPasarOjkDto {
+export class UpdateKpmrPasarProdukOjkDto {
   @ApiPropertyOptional({ description: 'Tahun KPMR', example: 2024 })
   @IsOptional()
   @IsInt()
@@ -309,7 +305,7 @@ export class UpdateKpmrPasarOjkDto {
   updatedBy?: string;
 }
 
-export class CreateKpmrAspekPasarDto {
+export class CreateKpmrAspekPasarProdukDto {
   @ApiPropertyOptional({ description: 'Nomor aspek', example: '1.1' })
   @IsOptional()
   @IsString()
@@ -380,17 +376,17 @@ export class CreateKpmrAspekPasarDto {
   notes?: string;
 
   @ApiPropertyOptional({
-    type: () => [CreateKpmrPertanyaanPasarDto],
+    type: () => [CreateKpmrPertanyaanPasarProdukDto],
     description: 'Daftar pertanyaan',
   })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateKpmrPertanyaanPasarDto)
-  pertanyaanList?: CreateKpmrPertanyaanPasarDto[];
+  @Type(() => CreateKpmrPertanyaanPasarProdukDto)
+  pertanyaanList?: CreateKpmrPertanyaanPasarProdukDto[];
 }
 
-export class UpdateKpmrAspekPasarDto {
+export class UpdateKpmrAspekPasarProdukDto {
   @ApiPropertyOptional({ description: 'Nomor aspek', example: '1.1' })
   @IsOptional()
   @IsString()
@@ -458,7 +454,7 @@ export class UpdateKpmrAspekPasarDto {
   notes?: string;
 }
 
-export class CreateKpmrPertanyaanPasarDto {
+export class CreateKpmrPertanyaanPasarProdukDto {
   @ApiPropertyOptional({ description: 'Nomor pertanyaan', example: '1.1.1' })
   @IsOptional()
   @IsString()
@@ -526,7 +522,7 @@ export class CreateKpmrPertanyaanPasarDto {
   orderIndex?: number;
 }
 
-export class UpdateKpmrPertanyaanPasarDto {
+export class UpdateKpmrPertanyaanPasarProdukDto {
   @ApiPropertyOptional({ description: 'Nomor pertanyaan', example: '1.1.1' })
   @IsOptional()
   @IsString()

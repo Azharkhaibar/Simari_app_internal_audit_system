@@ -1,4 +1,3 @@
-// src/ojk/kepatuhan-ojk/kepatuhan-ojk.controller.ts
 import {
   Controller,
   Get,
@@ -24,7 +23,7 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
-import { KepatuhanOjkService } from './kepatuhan-ojk.service';
+import { KepatuhanService } from './kepatuhan-ojk.service';
 import {
   CreateKepatuhanDto,
   UpdateKepatuhanDto,
@@ -38,8 +37,8 @@ import {
   ImportExportDto,
 } from './dto/kepatuhan-inherent.dto';
 
-@ApiTags('Kepatuhan OJK')
-@Controller('kepatuhan-ojk')
+@ApiTags('Kepatuhan')
+@Controller('kepatuhan')
 @UseInterceptors(ClassSerializerInterceptor)
 @UsePipes(
   new ValidationPipe({
@@ -48,15 +47,13 @@ import {
     forbidNonWhitelisted: true,
   }),
 )
-export class KepatuhanOjkController {
-  constructor(private readonly kepatuhanService: KepatuhanOjkService) {}
+export class KepatuhanController {
+  constructor(private readonly kepatuhanService: KepatuhanService) {}
 
   // === CRUD UTAMA ===
 
   @Get()
-  @ApiOperation({
-    summary: 'Get all Kepatuhan OJK data or by year/quarter',
-  })
+  @ApiOperation({ summary: 'Get all Kepatuhan data or by year/quarter' })
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
@@ -65,26 +62,35 @@ export class KepatuhanOjkController {
     @Query('quarter') quarter?: number,
   ) {
     if (year && quarter) {
+      const yearNum = Number(year);
+      const quarterNum = Number(quarter);
+
       const result = await this.kepatuhanService.findByYearQuarter(
-        year,
-        quarter,
+        yearNum,
+        quarterNum,
       );
-      if (!result) {
-        throw new NotFoundException(
-          `Data tidak ditemukan untuk tahun ${year} quarter ${quarter}`,
-        );
-      }
-      return result;
+
+      return {
+        success: true,
+        data: result || null,
+        exists: !!result,
+        message: result
+          ? `Data kepatuhan ditemukan untuk ${yearNum} Q${quarterNum}`
+          : `Data kepatuhan belum tersedia untuk ${yearNum} Q${quarterNum}`,
+      };
     }
-    return this.kepatuhanService.getAll();
+
+    const allData = await this.kepatuhanService.getAll();
+    return {
+      success: true,
+      data: allData,
+      count: allData.length,
+    };
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Get active Kepatuhan OJK data' })
-  @ApiResponse({
-    status: 200,
-    description: 'Active data retrieved successfully',
-  })
+  @ApiOperation({ summary: 'Get active Kepatuhan data' })
+  @ApiResponse({ status: 200, description: 'Active data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'No active data found' })
   async getActive() {
     const result = await this.kepatuhanService.findActive();
@@ -95,24 +101,12 @@ export class KepatuhanOjkController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Kepatuhan OJK by ID' })
+  @ApiOperation({ summary: 'Get Kepatuhan by ID' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    // PERBAIKAN: Cari langsung berdasarkan ID dengan method baru
-    const activeData = await this.kepatuhanService.findActive();
-
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Gunakan year dan quarter dari active data
-    const result = await this.kepatuhanService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const result = await this.kepatuhanService.findById(id);
     if (!result) {
       throw new NotFoundException(`Data dengan ID ${id} tidak ditemukan`);
     }
@@ -120,7 +114,7 @@ export class KepatuhanOjkController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new Kepatuhan OJK data' })
+  @ApiOperation({ summary: 'Create new Kepatuhan data' })
   @ApiBody({ type: CreateKepatuhanDto })
   @ApiResponse({ status: 201, description: 'Data created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -130,7 +124,7 @@ export class KepatuhanOjkController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update Kepatuhan OJK data' })
+  @ApiOperation({ summary: 'Update Kepatuhan data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateKepatuhanDto })
   @ApiResponse({ status: 200, description: 'Data updated successfully' })
@@ -175,7 +169,7 @@ export class KepatuhanOjkController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete Kepatuhan OJK data' })
+  @ApiOperation({ summary: 'Delete Kepatuhan data' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Data deleted successfully' })
   @ApiResponse({ status: 404, description: 'Data not found' })
@@ -186,16 +180,10 @@ export class KepatuhanOjkController {
   // === OPERASI PARAMETER ===
 
   @Get(':id/parameters')
-  @ApiOperation({
-    summary: 'Get all parameters for specific Kepatuhan OJK',
-  })
+  @ApiOperation({ summary: 'Get all parameters for specific Kepatuhan' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({
-    status: 200,
-    description: 'Parameters retrieved successfully',
-  })
+  @ApiResponse({ status: 200, description: 'Parameters retrieved successfully' })
   async getParameters(@Param('id', ParseIntPipe) kepatuhanId: number) {
-    // PERBAIKAN: Cari kepatuhan berdasarkan ID, bukan year/quarter
     const kepatuhan = await this.getKepatuhanByIdOrThrow(kepatuhanId);
     return kepatuhan.parameters || [];
   }
@@ -212,11 +200,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.addParameter(
-      kepatuhanId,
-      createParamDto,
-      userId,
-    );
+    return this.kepatuhanService.addParameter(kepatuhanId, createParamDto, userId);
   }
 
   @Put(':id/parameters/:parameterId')
@@ -233,22 +217,14 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.updateParameter(
-      kepatuhanId,
-      parameterId,
-      updateParamDto,
-      userId,
-    );
+    return this.kepatuhanService.updateParameter(kepatuhanId, parameterId, updateParamDto, userId);
   }
 
   @Put(':id/parameters/reorder')
   @ApiOperation({ summary: 'Reorder parameters' })
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: ReorderParametersDto })
-  @ApiResponse({
-    status: 200,
-    description: 'Parameters reordered successfully',
-  })
+  @ApiResponse({ status: 200, description: 'Parameters reordered successfully' })
   async reorderParameters(
     @Param('id', ParseIntPipe) kepatuhanId: number,
     @Body() reorderDto: ReorderParametersDto,
@@ -268,11 +244,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.copyParameter(
-      kepatuhanId,
-      parameterId,
-      userId,
-    );
+    return this.kepatuhanService.copyParameter(kepatuhanId, parameterId, userId);
   }
 
   @Delete(':id/parameters/:parameterId')
@@ -287,11 +259,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.removeParameter(
-      kepatuhanId,
-      parameterId,
-      userId,
-    );
+    return this.kepatuhanService.removeParameter(kepatuhanId, parameterId, userId);
   }
 
   // === OPERASI NILAI ===
@@ -305,14 +273,10 @@ export class KepatuhanOjkController {
     @Param('id', ParseIntPipe) kepatuhanId: number,
     @Param('parameterId', ParseIntPipe) parameterId: number,
   ) {
-    // PERBAIKAN: Cari kepatuhan berdasarkan ID
     const kepatuhan = await this.getKepatuhanByIdOrThrow(kepatuhanId);
-
     const parameter = kepatuhan.parameters?.find((p) => p.id === parameterId);
     if (!parameter) {
-      throw new NotFoundException(
-        `Parameter dengan ID ${parameterId} tidak ditemukan`,
-      );
+      throw new NotFoundException(`Parameter dengan ID ${parameterId} tidak ditemukan`);
     }
     return parameter.nilaiList || [];
   }
@@ -331,12 +295,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.addNilai(
-      kepatuhanId,
-      parameterId,
-      createNilaiDto,
-      userId,
-    );
+    return this.kepatuhanService.addNilai(kepatuhanId, parameterId, createNilaiDto, userId);
   }
 
   @Put(':id/parameters/:parameterId/nilai/:nilaiId')
@@ -355,13 +314,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.updateNilai(
-      kepatuhanId,
-      parameterId,
-      nilaiId,
-      updateNilaiDto,
-      userId,
-    );
+    return this.kepatuhanService.updateNilai(kepatuhanId, parameterId, nilaiId, updateNilaiDto, userId);
   }
 
   @Put(':id/parameters/:parameterId/nilai/reorder')
@@ -392,12 +345,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.copyNilai(
-      kepatuhanId,
-      parameterId,
-      nilaiId,
-      userId,
-    );
+    return this.kepatuhanService.copyNilai(kepatuhanId, parameterId, nilaiId, userId);
   }
 
   @Delete(':id/parameters/:parameterId/nilai/:nilaiId')
@@ -414,12 +362,7 @@ export class KepatuhanOjkController {
     @Request() req,
   ) {
     const userId = req.user?.id || 'system';
-    return this.kepatuhanService.removeNilai(
-      kepatuhanId,
-      parameterId,
-      nilaiId,
-      userId,
-    );
+    return this.kepatuhanService.removeNilai(kepatuhanId, parameterId, nilaiId, userId);
   }
 
   // === IMPORT/EXPORT ===
@@ -448,12 +391,19 @@ export class KepatuhanOjkController {
   @Get('references')
   @ApiOperation({ summary: 'Get reference data' })
   @ApiQuery({ name: 'type', required: false, type: String })
-  @ApiResponse({
-    status: 200,
-    description: 'References retrieved successfully',
-  })
+  @ApiResponse({ status: 200, description: 'References retrieved successfully' })
   async getReferences(@Query('type') type?: string) {
     return this.kepatuhanService.getReferences(type);
+  }
+
+  // === VALIDATION ENDPOINTS ===
+
+  @Get(':id/validate')
+  @ApiOperation({ summary: 'Validate model terstruktur' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Validation completed' })
+  async validateModelTerstruktur(@Param('id', ParseIntPipe) kepatuhanId: number) {
+    return this.kepatuhanService.validateModelTerstruktur(kepatuhanId);
   }
 
   // === UTILITY ENDPOINTS ===
@@ -473,52 +423,11 @@ export class KepatuhanOjkController {
 
   // === HELPER METHODS ===
 
-  /**
-   * Helper method untuk mendapatkan kepatuhan by ID
-   * Karena entity relasional, kita perlu mencari berdasarkan year/quarter dari kepatuhan aktif
-   */
   private async getKepatuhanByIdOrThrow(kepatuhanId: number) {
-    // Cari berdasarkan ID langsung (jika service punya method findById)
-    // Atau gunakan active data
-
-    const activeData = await this.kepatuhanService.findActive();
-    if (!activeData) {
-      throw new NotFoundException('Tidak ada data aktif ditemukan');
-    }
-
-    // Cari data berdasarkan year/quarter dari active data
-    const kepatuhan = await this.kepatuhanService.findByYearQuarter(
-      activeData.year,
-      activeData.quarter,
-    );
-
+    const kepatuhan = await this.kepatuhanService.findById(kepatuhanId);
     if (!kepatuhan) {
-      throw new NotFoundException(
-        `Data dengan ID ${kepatuhanId} tidak ditemukan`,
-      );
+      throw new NotFoundException(`Data dengan ID ${kepatuhanId} tidak ditemukan`);
     }
-
-    // Validasi bahwa ID yang diminta sesuai dengan ID yang ditemukan
-    if (kepatuhan.id !== kepatuhanId) {
-      throw new NotFoundException(
-        `Data dengan ID ${kepatuhanId} tidak ditemukan`,
-      );
-    }
-
     return kepatuhan;
-  }
-
-  /**
-   * Opsional: Method alternatif jika service punya findById
-   */
-  private async getKepatuhanByIdDirect(kepatuhanId: number) {
-    // Jika service memiliki method findById, gunakan ini
-    // Tapi service kita saat ini tidak punya, jadi perlu ditambahkan
-
-    // Contoh jika service punya method findById:
-    // return await this.kepatuhanService.findById(kepatuhanId);
-
-    // Untuk sekarang, kita gunakan workaround dengan active data
-    return this.getKepatuhanByIdOrThrow(kepatuhanId);
   }
 }

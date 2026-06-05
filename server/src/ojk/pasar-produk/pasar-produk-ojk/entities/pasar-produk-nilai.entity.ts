@@ -1,5 +1,3 @@
-// pasar-produk-nilai.entity.ts
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,11 +8,13 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { PasarParameter } from './pasar-produk-parameter.entity';
+import { PasarProdukParameter } from './pasar-produk-parameter.entity';
 
-@Entity('pasar_nilai')
-@Index(['parameterId', 'nomor'], { unique: false })
-export class PasarNilai {
+@Entity('pasar_produk_nilai_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
+export class PasarProdukNilai {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -52,15 +52,14 @@ export class PasarNilai {
     high?: string;
   };
 
-  // Foreign key ke Parameter
   @Column({ name: 'parameter_id' })
   parameterId: number;
 
-  @ManyToOne(() => PasarParameter, (parameter) => parameter.nilaiList, {
+  @ManyToOne(() => PasarProdukParameter, (parameter) => parameter.nilaiList, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'parameter_id' })
-  parameter: PasarParameter;
+  parameter: PasarProdukParameter;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

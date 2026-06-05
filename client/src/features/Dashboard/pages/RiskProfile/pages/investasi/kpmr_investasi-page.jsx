@@ -4,6 +4,8 @@ import { getCurrentYear } from './utils/investasi/time';
 import { exportKPMRInvestasiToExcel } from './utils/investasi/exportexcelkpmrinvest';
 import { useKpmr } from './hooks/KPMR/kpmr-investasi.hook';
 import ToastNotification from './components/kpmr-investasi/ToastNotification';
+import { useAuditLog } from '../../../audit-log/hooks/audit-log.hooks.js';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 
 // ===================== Brand =====================
 const PNM_BRAND = {
@@ -67,6 +69,16 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
   const clearToast = useCallback(() => {
     setToast({ show: false, message: '', type: 'success' });
   }, []);
+
+  // ========== AUDIT LOG ==========
+  const { authUser } = useAuth();
+  const { logCreate, logUpdate, logDelete, logExport } = useAuditLog();
+
+  const getCurrentUser = () => ({
+    userId: authUser?.user_id || authUser?.id || localStorage.getItem('userId') || null,
+  });
+
+  const currentUser = getCurrentUser();
 
   const setViewYear = useCallback(
     (year) => {
@@ -190,11 +202,39 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
         setShowEditAspectModal(false);
 
         await Promise.all([fetchAspects(viewYear), fetchFullData(viewYear), fetchDefinitions(viewYear)]);
+
+        // Log UPDATE aspek ke audit log
+        await logUpdate(
+          'INVESTASI',
+          `Mengupdate Aspek KPMR Investasi: No. ${editingAspectData.aspekNo} - "${editingAspectData.aspekTitle}", Tahun: ${viewYear}`,
+          {
+            userId: currentUser.userId,
+            isSuccess: true,
+            metadata: {
+              type: 'kpmr',
+              aspekId: editingAspectData.id,
+              aspekNo: editingAspectData.aspekNo,
+              aspekTitle: editingAspectData.aspekTitle,
+              aspekBobot: editingAspectData.aspekBobot,
+              year: viewYear,
+              updatedDefinitionsCount: definitionsToUpdate.length,
+            },
+          }
+        );
       }
     } catch (err) {
       console.error('Update aspek error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Gagal update aspek';
       showToast(errorMessage, 'error');
+      await logUpdate(
+        'INVESTASI',
+        `Gagal update aspek KPMR Investasi: ${editingAspectData.aspekTitle} (ID: ${editingAspectData.id})`,
+        {
+          userId: currentUser.userId,
+          isSuccess: false,
+          metadata: { type: 'kpmr', error: errorMessage, aspekId: editingAspectData.id, year: viewYear },
+        }
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -222,6 +262,25 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
         showToast(result.message || 'Pertanyaan berhasil dihapus', 'success');
 
         await Promise.all([fetchQuestions(viewYear), fetchFullData(viewYear), fetchAspects(viewYear)]);
+
+        // Log DELETE pertanyaan ke audit log
+        await logDelete(
+          'INVESTASI',
+          `Menghapus Pertanyaan KPMR Investasi: "${sectionTitle}" (No: ${sectionNo}) dari Aspek: ${aspekNo} - ${aspekTitle}`,
+          {
+            userId: currentUser.userId,
+            isSuccess: true,
+            metadata: {
+              type: 'kpmr',
+              questionId,
+              aspekNo,
+              aspekTitle,
+              sectionNo,
+              sectionTitle,
+              year: viewYear,
+            },
+          }
+        );
       } else {
         showToast(result?.message || 'Gagal menghapus pertanyaan', 'error');
       }
@@ -229,6 +288,15 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
       console.error('Delete error:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus pertanyaan';
       showToast(errorMessage, 'error');
+      await logDelete(
+        'INVESTASI',
+        `Gagal hapus pertanyaan KPMR Investasi: ${sectionTitle} (ID: ${questionId})`,
+        {
+          userId: currentUser.userId,
+          isSuccess: false,
+          metadata: { type: 'kpmr', error: errorMessage, questionId, year: viewYear },
+        }
+      );
     }
   };
 
@@ -482,10 +550,41 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
       setKPMR_isAddingNewQuestion(false);
 
       showToast('Data berhasil disimpan!', 'success');
+
+      // Log CREATE ke audit log
+      await logCreate(
+        'INVESTASI',
+        `Menambah data KPMR Investasi - Aspek: ${KPMR_form.aspekNo} ${KPMR_form.aspekTitle}, Pertanyaan: ${KPMR_form.sectionNo}, Tahun: ${KPMR_form.year}, Triwulan: ${KPMR_form.quarter}`,
+        {
+          userId: currentUser.userId,
+          isSuccess: true,
+          metadata: {
+            type: 'kpmr',
+            year: KPMR_form.year,
+            quarter: KPMR_form.quarter,
+            aspekNo: KPMR_form.aspekNo,
+            aspekTitle: KPMR_form.aspekTitle,
+            sectionNo: KPMR_form.sectionNo,
+            sectionTitle: KPMR_form.sectionTitle,
+            sectionSkor: KPMR_form.sectionSkor,
+            isNewAspek: KPMR_isAddingNewAspect,
+            isNewQuestion: KPMR_isAddingNewQuestion,
+          },
+        }
+      );
     } catch (err) {
       console.error('Gagal menyimpan data:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan';
       showToast(errorMessage, 'error');
+      await logCreate(
+        'INVESTASI',
+        `Gagal tambah data KPMR Investasi - Aspek: ${KPMR_form.aspekNo}, Pertanyaan: ${KPMR_form.sectionTitle}`,
+        {
+          userId: currentUser.userId,
+          isSuccess: false,
+          metadata: { type: 'kpmr', error: errorMessage, year: KPMR_form.year, quarter: KPMR_form.quarter },
+        }
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -739,10 +838,41 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
       setShowKPMRForm(false);
 
       showToast('Data berhasil diupdate!', 'success');
+
+      // Log UPDATE ke audit log
+      await logUpdate(
+        'INVESTASI',
+        `Mengupdate data KPMR Investasi - Aspek: ${KPMR_form.aspekNo}, Pertanyaan: ${KPMR_form.sectionNo}, Tahun: ${KPMR_form.year}, Triwulan: ${KPMR_form.quarter}`,
+        {
+          userId: currentUser.userId,
+          isSuccess: true,
+          metadata: {
+            type: 'kpmr',
+            definitionId: KPMR_editingTarget?.originalDefinitionId,
+            year: targetYear,
+            quarter: KPMR_form.quarter,
+            aspekNo: KPMR_form.aspekNo,
+            aspekTitle: KPMR_form.aspekTitle,
+            sectionNo: KPMR_form.sectionNo,
+            sectionTitle: KPMR_form.sectionTitle,
+            sectionSkor: KPMR_form.sectionSkor,
+            isNewQuestion,
+          },
+        }
+      );
     } catch (err) {
       console.error('❌ Gagal mengupdate data:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Terjadi kesalahan';
       showToast(errorMessage, 'error');
+      await logUpdate(
+        'INVESTASI',
+        `Gagal update data KPMR Investasi - Aspek: ${KPMR_form.aspekNo}, Pertanyaan: ${KPMR_form.sectionTitle}`,
+        {
+          userId: currentUser.userId,
+          isSuccess: false,
+          metadata: { type: 'kpmr', error: errorMessage, definitionId: KPMR_editingTarget?.originalDefinitionId, year: KPMR_form.year },
+        }
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -761,6 +891,17 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
       if (result && result.success) {
         showToast(result.message || `Aspek "${aspectName}" berhasil dihapus`, 'success');
         await Promise.all([fetchAspects(viewYear), fetchQuestions(viewYear), fetchFullData(viewYear)]);
+
+        // Log DELETE aspek ke audit log
+        await logDelete(
+          'INVESTASI',
+          `Menghapus Aspek KPMR Investasi: "${aspectName}" (ID: ${aspectId}), Tahun: ${viewYear}`,
+          {
+            userId: currentUser.userId,
+            isSuccess: true,
+            metadata: { type: 'kpmr', aspectId, aspectName, year: viewYear },
+          }
+        );
       } else {
         showToast(result?.message || 'Gagal menghapus aspek', 'error');
       }
@@ -768,10 +909,19 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
       console.error('DELETE ASPECT ERROR:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus aspek';
       showToast(errorMessage, 'error');
+      await logDelete(
+        'INVESTASI',
+        `Gagal hapus aspek KPMR Investasi: "${aspectName}" (ID: ${aspectId})`,
+        {
+          userId: currentUser.userId,
+          isSuccess: false,
+          metadata: { type: 'kpmr', error: errorMessage, aspectId, year: viewYear },
+        }
+      );
     }
   };
 
-  const KPMR_exportExcel = () => {
+  const KPMR_exportExcel = async () => {
     try {
       const allRows = groups.flatMap((g) =>
         g.sections.flatMap((s) =>
@@ -799,9 +949,35 @@ export default function InvestasiKPMR({ viewYear: propViewYear, viewQuarter: pro
       });
 
       showToast(`Data KPMR tahun ${viewYear} berhasil diexport`, 'success');
+
+      // Log EXPORT ke audit log
+      await logExport(
+        'INVESTASI',
+        `Export Excel KPMR Investasi tahun ${viewYear}`,
+        {
+          userId: currentUser.userId,
+          isSuccess: true,
+          metadata: {
+            type: 'kpmr',
+            year: viewYear,
+            dataCount: allRows.length,
+            aspekCount: groups.length,
+            format: 'Excel',
+          },
+        }
+      );
     } catch (err) {
       console.error('Export error:', err);
       showToast('Gagal mengexport data', 'error');
+      await logExport(
+        'INVESTASI',
+        `Gagal export Excel KPMR Investasi tahun ${viewYear}`,
+        {
+          userId: currentUser.userId,
+          isSuccess: false,
+          metadata: { type: 'kpmr', error: err.message, year: viewYear },
+        }
+      );
     }
   };
 

@@ -144,53 +144,46 @@ export function computeDerived(nilai, param) {
     ];
 
     if (!isNaN(rawValue)) {
-      const highText = String(ri.high ?? '').trim();
-      const isGreaterThanFormat = /^[xX]?\s*>|≥?>\s*\d+/i.test(highText);
+      for (const { key, rank } of ranges) {
+        const rawText = String(ri[key] ?? '');
+        const nums = rawText.match(/-?\d+(\.\d+)?/g);
+        if (!nums || nums.length === 0) continue;
 
-      if (isGreaterThanFormat) {
-        const match = highText.match(/(\d+(\.\d+)?)/);
-        if (match) {
-          const threshold = Number(match[1]);
-          if (rawValue >= threshold) {
-            peringkat = 5;
-            matchedIndex = 0;
+        let min = -Infinity;
+        let max = Infinity;
+
+        if (nums.length === 1) {
+          let n = Number(nums[0]);
+          if (rawText.includes('%')) {
+            n = n / 100;
           }
-        }
-      }
-
-      if (peringkat === null) {
-        for (const { key, rank } of ranges) {
-          const rawText = String(ri[key] ?? '');
-          const nums = rawText.match(/-?\d+(\.\d+)?/g);
-          if (!nums || nums.length === 0) continue;
-
-          let min = -Infinity;
-          let max = Infinity;
-
-          if (nums.length === 1) {
-            const n = Number(nums[0]);
-            if (/≤|<=/.test(rawText)) max = n;
-            else if (/≥|>=/.test(rawText)) min = n;
-            else if (/^[xX]?\s*>|>\s*\d+/i.test(rawText)) {
-              min = n;
-              max = Infinity;
-            } else if (/^[xX]?\s*<|<\s*\d+/i.test(rawText)) {
-              min = -Infinity;
-              max = n;
-            } else {
-              min = n;
-              max = n;
-            }
+          if (/≤|<=/.test(rawText)) max = n;
+          else if (/≥|>=/.test(rawText)) min = n;
+          else if (/^[xX]?\s*>|>\s*\d+/i.test(rawText)) {
+            min = n;
+            max = Infinity;
+          } else if (/^[xX]?\s*<|<\s*\d+/i.test(rawText)) {
+            min = -Infinity;
+            max = n;
           } else {
-            min = Number(nums[0]);
-            max = Number(nums[1]);
+            min = n;
+            max = n;
           }
+        } else {
+          let n1 = Number(nums[0]);
+          let n2 = Number(nums[1]);
+          if (rawText.includes('%')) {
+            n1 = n1 / 100;
+            n2 = n2 / 100;
+          }
+          min = Math.min(n1, n2);
+          max = Math.max(n1, n2);
+        }
 
-          if (rawValue >= min && rawValue <= max) {
-            peringkat = rank;
-            matchedIndex = 0;
-            break;
-          }
+        if (rawValue >= min && rawValue <= max) {
+          peringkat = rank;
+          matchedIndex = 0;
+          break;
         }
       }
     }
@@ -229,10 +222,10 @@ export function computeDerived(nilai, param) {
 
     function finalizeDisplay(type) {
       if (!isNaN(rawValue)) {
-        hasilDisplay = rawValue.toFixed(2);
-
         if (judul.percent) {
-          hasilDisplay += '%';
+          hasilDisplay = (rawValue * 100).toFixed(2) + '%';
+        } else {
+          hasilDisplay = rawValue.toFixed(2);
         }
         return;
       }

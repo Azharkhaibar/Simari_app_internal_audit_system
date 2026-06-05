@@ -9,16 +9,14 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { KpmrKreditOjk } from './kredit-produk-kpmr.entity';
-// import { KpmrPertanyaanKredit } from './kredit-produk-kpmr-pertanyaan.entity';
-
-
+import { KpmrKreditOjk } from './kredit-produk-kpmr-ojk.entity';
 import { KpmrPertanyaanKredit } from './kredit-kpmr-pertanyaan.entity';
+
 @Entity('kpmr_aspek_kredit')
-@Index(['kpmrKreditId', 'nomor'], { unique: false })
-@Index(['kpmrKreditId', 'orderIndex'], { unique: false })
-@Index(['kpmrKreditId', 'bobot'])
-@Index(['kpmrKreditId', 'createdAt'])
+@Index(['kpmrOjkId', 'nomor'])
+@Index(['kpmrOjkId', 'orderIndex'])
+@Index(['kpmrOjkId', 'bobot'])
+@Index(['kpmrOjkId', 'createdAt'])
 export class KpmrAspekKredit {
   @PrimaryGeneratedColumn()
   id: number;
@@ -26,33 +24,31 @@ export class KpmrAspekKredit {
   @Column({ nullable: true })
   nomor?: string;
 
-  @Column({ nullable: false })
+  @Column()
   judul: string;
 
-  @Column('decimal', {
-    precision: 10,
-    scale: 2,
-    nullable: false,
-    default: 0,
-  })
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
   bobot: number;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'text', nullable: true })
   deskripsi?: string;
 
-  @Column({ name: 'kpmr_kredit_id' })
-  kpmrKreditId: number;
+  @Column({ name: 'kpmr_ojk_id' })
+  kpmrOjkId: number;
 
   @ManyToOne(() => KpmrKreditOjk, (kpmr) => kpmr.aspekList, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'kpmr_kredit_id' })
-  kpmrKredit: KpmrKreditOjk;
+  @JoinColumn({ name: 'kpmr_ojk_id' })
+  kpmrOjk: KpmrKreditOjk;
 
-  @OneToMany(() => KpmrPertanyaanKredit, (pertanyaan) => pertanyaan.aspek, {
-    cascade: true,
-    eager: false,
-  })
+  @OneToMany(
+    () => KpmrPertanyaanKredit,
+    (pertanyaan) => pertanyaan.aspek,
+    {
+      cascade: true,
+    },
+  )
   pertanyaanList?: KpmrPertanyaanKredit[];
 
   @CreateDateColumn({ name: 'created_at' })
@@ -78,6 +74,6 @@ export class KpmrAspekKredit {
   @Column({ nullable: true, name: 'updated_by' })
   updatedBy?: string;
 
-  @Column({ nullable: true, type: 'text' })
+  @Column({ type: 'text', nullable: true })
   notes?: string;
 }

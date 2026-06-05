@@ -164,7 +164,7 @@ export const rasApi = {
   async create(data: CreateRasDto): Promise<RasData> {
     try {
       console.log('➕ Creating new RAS data');
-      const response = await api_ras.post('', data);
+      const response = await api_ras.post('/', data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Error creating RAS data:', error.message);

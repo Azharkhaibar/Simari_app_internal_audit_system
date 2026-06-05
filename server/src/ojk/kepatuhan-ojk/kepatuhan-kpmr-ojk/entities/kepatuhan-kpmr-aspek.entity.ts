@@ -13,10 +13,10 @@ import { KpmrKepatuhanOjk } from './kepatuhan-kpmr-ojk.entity';
 import { KpmrPertanyaanKepatuhan } from './kepatuhan-kpmr-pertanyaan.entity';
 
 @Entity('kpmr_aspek_kepatuhan')
-@Index(['kpmrKepatuhanId', 'nomor'], { unique: false })
-@Index(['kpmrKepatuhanId', 'orderIndex'], { unique: false })
-@Index(['kpmrKepatuhanId', 'bobot'])
-@Index(['kpmrKepatuhanId', 'createdAt'])
+@Index(['kpmrOjkId', 'nomor'])
+@Index(['kpmrOjkId', 'orderIndex'])
+@Index(['kpmrOjkId', 'bobot'])
+@Index(['kpmrOjkId', 'createdAt'])
 export class KpmrAspekKepatuhan {
   @PrimaryGeneratedColumn()
   id: number;
@@ -24,33 +24,31 @@ export class KpmrAspekKepatuhan {
   @Column({ nullable: true })
   nomor?: string;
 
-  @Column({ nullable: false })
+  @Column()
   judul: string;
 
-  @Column('decimal', {
-    precision: 10,
-    scale: 2,
-    nullable: false,
-    default: 0,
-  })
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
   bobot: number;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'text', nullable: true })
   deskripsi?: string;
 
-  @Column({ name: 'kpmr_kepatuhan_id' })
-  kpmrKepatuhanId: number;
+  @Column({ name: 'kpmr_ojk_id' })
+  kpmrOjkId: number;
 
   @ManyToOne(() => KpmrKepatuhanOjk, (kpmr) => kpmr.aspekList, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'kpmr_kepatuhan_id' })
-  kpmrKepatuhan: KpmrKepatuhanOjk;
+  @JoinColumn({ name: 'kpmr_ojk_id' })
+  kpmrOjk: KpmrKepatuhanOjk;
 
-  @OneToMany(() => KpmrPertanyaanKepatuhan, (pertanyaan) => pertanyaan.aspek, {
-    cascade: true,
-    eager: false,
-  })
+  @OneToMany(
+    () => KpmrPertanyaanKepatuhan,
+    (pertanyaan) => pertanyaan.aspek,
+    {
+      cascade: true,
+    },
+  )
   pertanyaanList?: KpmrPertanyaanKepatuhan[];
 
   @CreateDateColumn({ name: 'created_at' })
@@ -76,6 +74,6 @@ export class KpmrAspekKepatuhan {
   @Column({ nullable: true, name: 'updated_by' })
   updatedBy?: string;
 
-  @Column({ nullable: true, type: 'text' })
+  @Column({ type: 'text', nullable: true })
   notes?: string;
 }

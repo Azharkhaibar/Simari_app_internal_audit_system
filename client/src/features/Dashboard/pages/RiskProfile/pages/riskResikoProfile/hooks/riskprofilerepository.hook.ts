@@ -337,3 +337,153 @@ export const useModuleRepository = (module: ModuleType, options?: UseRiskProfile
     }, [repository, module, options]),
   };
 };
+
+export const useRiskProfileRepositoryOjk = (options: UseRiskProfileRepositoryOptions = {}) => {
+  const { initialFilters = {}, initialPagination = { page: 1, limit: 100 }, autoFetch = true } = options;
+
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<any>(initialFilters);
+  const [pagination, setPagination] = useState<any>(initialPagination);
+  const [response, setResponse] = useState<any | null>(null);
+  const [modules, setModules] = useState<any[]>([]);
+  const [periods, setPeriods] = useState<any[]>([]);
+  const [statistics, setStatistics] = useState<any | null>(null);
+
+  const isFetching = useRef(false);
+
+  const fetchRepositoryData = useCallback(async () => {
+    if (isFetching.current) return;
+    try {
+      isFetching.current = true;
+      setLoading(true);
+      setError(null);
+      const result = await riskProfileRepositoryService.getOjkRepositoryData(filters, pagination);
+      setResponse(result);
+      setData(result.data);
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch OJK repository data';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+      isFetching.current = false;
+    }
+  }, [filters, pagination]);
+
+  const fetchStatistics = useCallback(async (year: number, quarter: any) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await riskProfileRepositoryService.getOjkRepositoryStatistics(year, quarter);
+      setStatistics(result);
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch statistics';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchModules = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await riskProfileRepositoryService.getOjkAvailableModules();
+      setModules(result);
+      return result;
+    } catch (err) {
+      console.error('Failed to fetch modules:', err);
+      setModules([]);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchPeriods = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await riskProfileRepositoryService.getOjkAvailablePeriods();
+      setPeriods(result);
+      return result;
+    } catch (err) {
+      console.error('Failed to fetch periods:', err);
+      setPeriods([]);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const updateFilter = useCallback((key: string, value: any) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const setYearFilter = useCallback((year?: number) => { updateFilter('year', year); }, [updateFilter]);
+  const setQuarterFilter = useCallback((quarter?: any) => { updateFilter('quarter', quarter); }, [updateFilter]);
+  const setModuleTypesFilter = useCallback((moduleTypes?: any[]) => { updateFilter('moduleTypes', moduleTypes); }, [updateFilter]);
+  const setSearchFilter = useCallback((searchQuery?: string) => { updateFilter('searchQuery', searchQuery); }, [updateFilter]);
+  const resetFilters = useCallback(() => { setFilters(initialFilters); setPagination(initialPagination); }, [initialFilters, initialPagination]);
+
+  const goToPage = useCallback((page: number) => { setPagination((prev) => ({ ...prev, page })); }, []);
+  const setPageSize = useCallback((limit: number) => { setPagination((prev) => ({ ...prev, limit, page: 1 })); }, []);
+  const setSort = useCallback((sortBy: string, sortOrder: 'ASC' | 'DESC' = 'ASC') => { setPagination((prev) => ({ ...prev, sortBy, sortOrder })); }, []);
+
+  useEffect(() => {
+    return () => { isFetching.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (autoFetch) { fetchRepositoryData(); }
+  }, [filters, pagination, autoFetch, fetchRepositoryData]);
+
+  useEffect(() => {
+    if (autoFetch) {
+      const loadInitialData = async () => {
+        await Promise.all([fetchModules(), fetchPeriods()]);
+      };
+      loadInitialData();
+    }
+  }, [autoFetch]);
+
+  const getModuleColor = (moduleType: any): string => {
+    const module = modules.find((m) => m.code === moduleType);
+    return module?.color || '#6B7280';
+  };
+
+  const getModuleName = (moduleType: any): string => {
+    const module = modules.find((m) => m.code === moduleType);
+    return module?.name || moduleType;
+  };
+
+  return {
+    data,
+    response,
+    modules,
+    periods,
+    statistics,
+    loading,
+    error,
+    filters,
+    pagination,
+    fetchRepositoryData,
+    fetchStatistics,
+    fetchModules,
+    fetchPeriods,
+    setYearFilter,
+    setQuarterFilter,
+    setModuleTypesFilter,
+    setSearchFilter,
+    resetFilters,
+    updateFilter,
+    goToPage,
+    setPageSize,
+    setSort,
+    getModuleColor,
+    getModuleName,
+  };
+};

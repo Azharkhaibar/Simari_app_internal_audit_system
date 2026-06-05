@@ -12,8 +12,10 @@ import {
 import { HukumOjk } from './hukum-ojk.entity';
 import { HukumNilai } from './hukum-nilai.entity';
 
-@Entity('hukum_parameters')
-@Index(['hukumOjkId', 'nomor'], { unique: false })
+@Entity('hukum_parameters_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['hukumId', 'nomor'])
+@Index(['hukumId', 'orderIndex'])
 export class HukumParameter {
   @PrimaryGeneratedColumn()
   id: number;
@@ -36,13 +38,13 @@ export class HukumParameter {
   };
 
   @Column({ name: 'hukum_ojk_id' })
-  hukumOjkId: number;
+  hukumId: number;
 
   @ManyToOne(() => HukumOjk, (hukum) => hukum.parameters, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'hukum_ojk_id' })
-  hukumOjk: HukumOjk;
+  hukum: HukumOjk;
 
   @OneToMany(() => HukumNilai, (nilai) => nilai.parameter, {
     cascade: true,

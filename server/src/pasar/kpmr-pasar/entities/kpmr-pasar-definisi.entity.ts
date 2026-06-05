@@ -1,4 +1,4 @@
-// src/entities/strategik/kpmr-pasar-definisi.entity.ts
+// src/features/Dashboard/pages/RiskProfile/pages/Pasar/entities/kpmr-pasar-definisi.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,

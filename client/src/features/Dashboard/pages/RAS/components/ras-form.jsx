@@ -129,7 +129,12 @@ export default function RasForm({ existingCategories = [], onSubmit, onCancel, i
 
   useEffect(() => {
     if (initialData) {
-      setForm({ ...initialFormState, ...initialData, isNewCategory: false });
+      setForm({
+        ...initialFormState,
+        ...initialData,
+        isNewCategory: false,
+        monthlyValues: initialData.monthlyValues || {}, // ✅ Pastikan object
+      });
       const existingVals = initialData.monthlyValues?.[activeMonth] || {};
       setCurrentNum(existingVals.num || '');
       setCurrentDen(existingVals.den || '');

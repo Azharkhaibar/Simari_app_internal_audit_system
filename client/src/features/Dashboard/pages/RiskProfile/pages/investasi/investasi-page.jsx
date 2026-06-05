@@ -12,6 +12,8 @@ import { exportInvestasiToExcel } from './utils/investasi/exportExcel';
 import ToastNotification from './components/kpmr-investasi/ToastNotification';
 // ==== Hooks & Services ====
 import { useInvestasi } from './hooks/investasi/new-investasi.hook';
+import { useAuditLog } from '../../../audit-log/hooks/audit-log.hooks.js';
+import { useAuth } from '@/features/auth/hooks/useAuth.hook';
 
 // ==== Section Inheritance Utils ====
 import {
@@ -269,6 +271,35 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
 
   const clearToast = () => setToast({ show: false, message: '', type: 'success' });
 
+  // ====== AUDIT LOG ======
+  const { user: authUser } = useAuth();
+  const { logCreate, logUpdate, logDelete, logExport } = useAuditLog();
+
+  const getCurrentUser = () => {
+    if (authUser && authUser.user_id) {
+      return {
+        id: authUser.user_id,
+        name: authUser.userID || authUser.username || 'Unknown User',
+        role: authUser.role || 'User',
+      };
+    }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('user'));
+      if (storedUser && storedUser.user_id) {
+        return {
+          id: storedUser.user_id,
+          name: storedUser.userID || storedUser.username || 'Unknown User',
+          role: storedUser.role || 'User',
+        };
+      }
+    } catch (e) {
+      console.warn('Cannot parse user from localStorage:', e);
+    }
+    return { id: null, name: 'System', role: 'System' };
+  };
+
+  const currentUser = getCurrentUser();
+
   // ====== HOOK INVESTASI ======
   const {
     sections,
@@ -330,6 +361,20 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
               count: prevSections.length,
             });
             showToast(`${prevSections.length} section berhasil di-clone dari periode ${prevPeriod.year}-${prevPeriod.quarter}`, 'info');
+
+            // Log auto-clone ke audit log
+            await logCreate('INVESTASI', `Auto-clone ${prevSections.length} section Investasi dari periode ${prevPeriod.year}-TW${prevPeriod.quarter} ke ${viewYear}-TW${viewQuarter}`, {
+              userId: currentUser.id,
+              isSuccess: true,
+              metadata: {
+                type: 'inherent',
+                year: viewYear,
+                quarter: viewQuarter,
+                clonedFrom: `${prevPeriod.year}-TW${prevPeriod.quarter}`,
+                sectionCount: prevSections.length,
+                sections: prevSections.map((s) => ({ no: s.no, parameter: s.parameter })),
+              },
+            });
           }
         }
       } catch (err) {
@@ -402,10 +447,30 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${newSection.parameter}" berhasil ditambahkan`, 'success');
+
+      // Log CREATE section ke audit log
+      await logCreate('INVESTASI', `Tambah section baru: ${newSection.parameter} (No: ${newSection.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          sectionId: newSection.id,
+          no: newSection.no,
+          parameter: newSection.parameter,
+          bobotSection: newSection.bobotSection,
+          year: viewYear,
+          quarter: viewQuarter,
+        },
+      });
     } catch (err) {
       console.error('Failed to add section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menambahkan section';
       showToast(errorMessage, 'error');
+      await logCreate('INVESTASI', `Gagal tambah section: ${INVESTASI_sectionForm.sectionLabel}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: errorMessage, year: viewYear, quarter: viewQuarter },
+      });
     }
   }
 
@@ -423,10 +488,30 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${sectionData.parameter}" berhasil diupdate`, 'success');
+
+      // Log UPDATE section ke audit log
+      await logUpdate('INVESTASI', `Update section: ${sectionData.parameter} (No: ${sectionData.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          sectionId: INVESTASI_sectionForm.id,
+          no: sectionData.no,
+          parameter: sectionData.parameter,
+          bobotSection: sectionData.bobotSection,
+          year: viewYear,
+          quarter: viewQuarter,
+        },
+      });
     } catch (err) {
       console.error('Failed to update section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal mengupdate section';
       showToast(errorMessage, 'error');
+      await logUpdate('INVESTASI', `Gagal update section: ${sectionData.parameter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: errorMessage, sectionId: INVESTASI_sectionForm.id, year: viewYear, quarter: viewQuarter },
+      });
     }
   }
 
@@ -462,10 +547,30 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
       setIsAddingNewSection(false);
       setIsEditingSection(false);
       showToast(`Section "${sectionToDelete.parameter}" berhasil dihapus`, 'success');
+
+      // Log DELETE section ke audit log
+      await logDelete('INVESTASI', `Hapus section: ${sectionToDelete.parameter} (No: ${sectionToDelete.no})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          sectionId: id,
+          no: sectionToDelete.no,
+          parameter: sectionToDelete.parameter,
+          bobotSection: sectionToDelete.bobotSection,
+          year: viewYear,
+          quarter: viewQuarter,
+        },
+      });
     } catch (err) {
       console.error('Failed to delete section:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus section';
       showToast(errorMessage, 'error');
+      await logDelete('INVESTASI', `Gagal hapus section: ${sectionToDelete.parameter} (ID: ${id})`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: errorMessage, sectionId: id, year: viewYear, quarter: viewQuarter },
+      });
     }
   }
 
@@ -481,9 +586,28 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
 
       setInheritInfo(null);
       showToast('Clone berhasil dibatalkan', 'success');
+
+      // Log undo clone ke audit log
+      await logDelete('INVESTASI', `Undo clone section Investasi ${viewYear}-TW${viewQuarter} (${clonedSections.length} section dihapus)`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          year: viewYear,
+          quarter: viewQuarter,
+          clonedFrom: inheritInfo.from,
+          deletedSectionCount: clonedSections.length,
+          sections: clonedSections.map((s) => ({ id: s.id, parameter: s.parameter })),
+        },
+      });
     } catch (err) {
       console.error('Error undoing clone:', err);
       showToast('Gagal membatalkan clone', 'error');
+      await logDelete('INVESTASI', `Gagal undo clone section Investasi ${viewYear}-TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: err.message, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
@@ -698,14 +822,37 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
     const backendData = transformToBackend(baseRow, viewYear, viewQuarter, INVESTASI_sectionForm.id, section);
 
     try {
-      await createIndikator(backendData);
+      const createdIndicator = await createIndikator(backendData);
       INVESTASI_resetForm();
       setShowInvestasiForm(false);
       showToast('Indikator berhasil ditambahkan!', 'success');
+
+      // Log CREATE indikator ke audit log
+      await logCreate('INVESTASI', `Tambah indikator: ${backendData.indikator} (Section: ${section.parameter})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          sectionId: INVESTASI_sectionForm.id,
+          sectionNo: INVESTASI_sectionForm.no,
+          sectionLabel: INVESTASI_sectionForm.sectionLabel,
+          subNo: backendData.subNo,
+          indikator: backendData.indikator,
+          bobotIndikator: backendData.bobotIndikator,
+          mode: backendData.mode,
+          year: viewYear,
+          quarter: viewQuarter,
+        },
+      });
     } catch (err) {
       console.error('Failed to add indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menambahkan indikator';
       showToast(errorMessage, 'error');
+      await logCreate('INVESTASI', `Gagal tambah indikator: ${INVESTASI_form.indikator}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: errorMessage, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
@@ -811,10 +958,34 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
       INVESTASI_resetForm();
       setShowInvestasiForm(false);
       showToast('Indikator berhasil diupdate!', 'success');
+
+      // Log UPDATE indikator ke audit log
+      await logUpdate('INVESTASI', `Update indikator: ${updateData.indikator} (ID: ${INVESTASI_editingRow.id})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          indicatorId: INVESTASI_editingRow.id,
+          sectionId: INVESTASI_sectionForm.id,
+          subNo: updateData.subNo,
+          indikator: updateData.indikator,
+          bobotIndikator: updateData.bobotIndikator,
+          peringkat: updateData.peringkat,
+          weighted: updateData.weighted,
+          mode: updateData.mode,
+          year: viewYear,
+          quarter: viewQuarter,
+        },
+      });
     } catch (err) {
       console.error('Failed to update indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal mengupdate indikator';
       showToast(errorMessage, 'error');
+      await logUpdate('INVESTASI', `Gagal update indikator: ${INVESTASI_editingRow?.indikator} (ID: ${INVESTASI_editingRow?.id})`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: errorMessage, indicatorId: INVESTASI_editingRow?.id, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
@@ -829,19 +1000,60 @@ export default function InvestasiInherent({ viewYear, viewQuarter, onViewYearCha
       await deleteIndikator(row.id);
       if (INVESTASI_editingRow?.id === row.id) INVESTASI_resetForm();
       showToast(`Indikator "${row.indikator}" berhasil dihapus`, 'success');
+
+      // Log DELETE indikator ke audit log
+      await logDelete('INVESTASI', `Hapus indikator: ${row.indikator} (Sub No: ${row.subNo})`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          indicatorId: row.id,
+          subNo: row.subNo,
+          indikator: row.indikator,
+          sectionLabel: row.sectionLabel,
+          sectionNo: row.no,
+          bobotIndikator: row.bobotIndikator,
+          peringkat: row.peringkat,
+          year: viewYear,
+          quarter: viewQuarter,
+        },
+      });
     } catch (err) {
       console.error('Failed to delete indicator:', err);
       const errorMessage = err?.response?.data?.message || err?.message || 'Gagal menghapus indikator';
       showToast(errorMessage, 'error');
+      await logDelete('INVESTASI', `Gagal hapus indikator: ${row.indikator} (ID: ${row.id})`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: errorMessage, indicatorId: row.id, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 
-  const INVESTASI_exportExcel = () => {
+  const INVESTASI_exportExcel = async () => {
     try {
       exportInvestasiToExcel(INVESTASI_filtered, viewYear, viewQuarter);
       showToast(`Data Investasi tahun ${viewYear} triwulan ${viewQuarter} berhasil diexport`, 'success');
+
+      // Log EXPORT ke audit log
+      await logExport('INVESTASI', `Export data Investasi tahun ${viewYear} TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: true,
+        metadata: {
+          type: 'inherent',
+          year: viewYear,
+          quarter: viewQuarter,
+          dataCount: INVESTASI_filtered.length,
+          filename: `Investasi_${viewYear}_TW${viewQuarter}.xlsx`,
+        },
+      });
     } catch (err) {
       showToast('Gagal mengexport data', 'error');
+      await logExport('INVESTASI', `Gagal export data Investasi tahun ${viewYear} TW${viewQuarter}`, {
+        userId: currentUser.id,
+        isSuccess: false,
+        metadata: { type: 'inherent', error: err.message, year: viewYear, quarter: viewQuarter },
+      });
     }
   };
 

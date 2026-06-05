@@ -6,13 +6,13 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('inherent_references_strategis')
+@Entity('inherent_references_strategis_ojk')
 export class StrategisReference {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ type: 'varchar', length: 50 })
-  type: string;at
+  type: string;
 
   @Column({ type: 'varchar', length: 50 })
   key: string;

@@ -162,6 +162,11 @@ export interface Period {
   quarter: Quarter;
 }
 
+export interface DeleteResponse {
+  success: boolean;
+  message: string;
+}
+
 // UTILITY FUNCTIONS
 export const fmtNumber = (v: any): string => {
   if (v === '' || v == null) return '';
@@ -356,8 +361,8 @@ class LikuiditasApiService {
     return this.request<LikuiditasSection>('put', `/likuiditas/sections/${id}`, data);
   }
 
-  async deleteSection(id: number): Promise<void> {
-    return this.request<void>('delete', `/likuiditas/sections/${id}`);
+  async deleteSection(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/likuiditas/sections/${id}`);
   }
 
   // ========== INDIKATOR API ==========
@@ -412,8 +417,8 @@ class LikuiditasApiService {
     return this.request<LikuiditasIndikator>('put', `/likuiditas/indikators/${id}`, data);
   }
 
-  async deleteIndikator(id: number): Promise<void> {
-    return this.request<void>('delete', `/likuiditas/indikators/${id}`);
+  async deleteIndikator(id: number): Promise<DeleteResponse> {
+    return this.request<DeleteResponse>('delete', `/likuiditas/indikators/${id}`);
   }
 
   async getTotalWeightedByPeriod(year: number, quarter: Quarter): Promise<number> {

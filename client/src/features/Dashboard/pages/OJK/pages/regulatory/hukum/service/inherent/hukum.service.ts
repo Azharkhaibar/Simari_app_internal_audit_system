@@ -1,16 +1,16 @@
 // services/hukum.service.ts
-import api_hukum from '../hukum-api.service';
+import api_hukum_produk from "../hukum-api.service";
 
 // =============================================
 // TYPES BERDASARKAN BACKEND ENTITY
 // =============================================
 
-export interface HukumEntity {
+export interface HukumProdukOjkEntity {
   id: number;
   year: number;
   quarter: number;
   isActive: boolean;
-  parameters?: ParameterEntity[];
+  parameters?: HukumParameterEntity[];
   summary?: {
     totalWeighted?: number;
     summaryBg?: string;
@@ -27,7 +27,7 @@ export interface HukumEntity {
   notes?: string;
 }
 
-export interface ParameterEntity {
+export interface HukumParameterEntity {
   id: number;
   nomor?: string;
   judul: string;
@@ -38,14 +38,14 @@ export interface ParameterEntity {
     jenis?: string;
     underlying?: string[];
   };
-  nilaiList?: NilaiEntity[];
+  nilaiList?: HukumNilaiEntity[];
   orderIndex: number;
-  hukumId: number;
+  hukumProdukOjkId: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface NilaiEntity {
+export interface HukumNilaiEntity {
   id: number;
   nomor?: string;
   judul: {
@@ -79,7 +79,7 @@ export interface NilaiEntity {
 // DTOs UNTUK CREATE/UPDATE (SESUAI BACKEND)
 // =============================================
 
-export interface CreateHukumDto {
+export interface CreateHukumProdukInherentDto {
   year: number;
   quarter: number;
   isActive?: boolean;
@@ -87,7 +87,7 @@ export interface CreateHukumDto {
   version?: string;
 }
 
-export interface UpdateHukumDto {
+export interface UpdateHukumProdukInherentDto {
   year?: number;
   quarter?: number;
   isActive?: boolean;
@@ -202,32 +202,25 @@ export interface ReferenceItem {
 // MAIN SERVICE CLASS
 // =============================================
 
-export class HukumService {
-  // PERBAIKAN: Sesuaikan dengan endpoint backend (lihat controller menggunakan '/kpmr-hukum')
-  private baseUrl = '/kpmr-hukum';
-
-  // =============================================
-  // FIND OR CREATE - PERBAIKAN DENGAN LOGGING DETAIL
-  // =============================================
+export class HukumProdukService {
+  private baseUrl = '/hukum';
 
   async findOrCreate(
     year: number,
     quarter: number,
   ): Promise<{
     success: boolean;
-    data: HukumEntity | null;
+    data: HukumProdukOjkEntity | null;
     isNew: boolean;
     message: string;
   }> {
     console.log(`[Service] findOrCreate: ${year}-Q${quarter}`);
 
     try {
-      // 1. Cari data yang sudah ada
-      console.log(`[Service] Mencari data untuk ${year}-Q${quarter}...`);
       const existingData = await this.findByYearQuarter(year, quarter);
 
       if (existingData) {
-        console.log(`[Service] Data ditemukan, ID: ${existingData.id}`);
+        console.log(`[Service] findOrCreate: Found existing ID=${existingData.id}`);
         return {
           success: true,
           data: existingData,
@@ -236,21 +229,18 @@ export class HukumService {
         };
       }
 
-      // 2. Jika tidak ada, buat data baru
-      console.log(`[Service] Data tidak ditemukan, membuat baru untuk ${year}-Q${quarter}`);
-
-      const createDto: CreateHukumDto = {
+      console.log(`[Service] findOrCreate: Creating new data`);
+      const newData = await this.create({
         year,
         quarter,
         isActive: true,
         createdBy: 'system',
         version: '1.0.0',
-      };
+      });
 
-      const newData = await this.create(createDto);
+      if (!newData?.parameters) newData.parameters = [];
 
-      console.log(`[Service] Data baru berhasil dibuat, ID: ${newData.id}`);
-
+      console.log(`[Service] findOrCreate: Created ID=${newData.id}`);
       return {
         success: true,
         data: newData,
@@ -258,30 +248,25 @@ export class HukumService {
         message: 'Data berhasil dibuat',
       };
     } catch (error: any) {
-      console.error('[Service] Error dalam findOrCreate:', error);
+      console.error('[Service] findOrCreate error:', error.message);
 
-      // Log detail error untuk debugging
-      if (error.response) {
-        console.error('[Service] Response error:', {
-          status: error.response.status,
-          data: error.response.data,
-          url: error.config?.url,
-        });
-      }
+      try {
+        const retryData = await this.findByYearQuarter(year, quarter);
+        if (retryData) {
+          return { success: true, data: retryData, isNew: false, message: 'Data ditemukan (retry)' };
+        }
+      } catch {}
 
       return {
         success: false,
         data: null,
         isNew: false,
-        message: error.response?.data?.message || error.message || 'Gagal memuat atau membuat data',
+        message: error.message || 'Gagal memuat data',
       };
     }
   }
 
-  /**
-   * Method untuk memastikan data tersedia sebelum operasi
-   */
-  async ensureDataExists(year: number, quarter: number): Promise<HukumEntity> {
+  async ensureDataExists(year: number, quarter: number): Promise<HukumProdukOjkEntity> {
     console.log(`[Service] ensureDataExists: ${year}-Q${quarter}`);
 
     const result = await this.findOrCreate(year, quarter);
@@ -290,7 +275,6 @@ export class HukumService {
       throw new Error(`Gagal memastikan data tersedia: ${result.message}`);
     }
 
-    // Pastikan parameters array
     if (!Array.isArray(result.data.parameters)) {
       result.data.parameters = [];
     }
@@ -298,20 +282,22 @@ export class HukumService {
     return result.data;
   }
 
-  /**
-   * Method untuk load data dengan auto-create jika tidak ada
-   */
-  async loadOrCreateData(year: number, quarter: number): Promise<HukumEntity> {
+  async loadOrCreateData(year: number, quarter: number): Promise<HukumProdukOjkEntity> {
     console.log(`[Service] loadOrCreateData: ${year}-Q${quarter}`);
-    return this.ensureDataExists(year, quarter);
+
+    const result = await this.findOrCreate(year, quarter);
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Gagal memuat data');
+    }
+
+    return result.data;
   }
 
-  /**
-   * Helper untuk format data ke frontend
-   */
-  private formatToFrontend(entity: HukumEntity | null): any[] {
+  public formatToFrontend(entity: HukumProdukOjkEntity | null): any[] {
     console.log('[Service] formatToFrontend - Input entity:', {
-      entity: entity ? `ID: ${entity.id}` : null,
+      entity,
+      entityType: typeof entity,
       hasParameters: !!entity?.parameters,
       parametersType: Array.isArray(entity?.parameters) ? 'array' : typeof entity?.parameters,
     });
@@ -321,13 +307,11 @@ export class HukumService {
       return [];
     }
 
-    // PERBAIKAN: Pastikan parameters selalu array
     const parameters = Array.isArray(entity.parameters) ? entity.parameters : [];
 
     console.log(`[Service] formatToFrontend: Processing ${parameters.length} parameters`);
 
     const result = parameters.map((param, index) => {
-      // PERBAIKAN: Pastikan nilaiList selalu array
       const nilaiList = Array.isArray(param.nilaiList) ? param.nilaiList : [];
 
       const formattedParam = {
@@ -342,7 +326,6 @@ export class HukumService {
           underlying: [],
         },
         orderIndex: param.orderIndex || index,
-        // PERBAIKAN: Format nilaiList dengan safety checks
         nilaiList: nilaiList.map((nilai, idx) => ({
           id: nilai.id?.toString() || `temp-nilai-${Date.now()}-${idx}`,
           nomor: nilai.nomor || '',
@@ -369,9 +352,8 @@ export class HukumService {
           },
           orderIndex: nilai.orderIndex || idx,
         })),
-        // Metadata dari inherent
         metadata: {
-          hukumId: entity.id,
+          inherentId: entity.id,
           year: entity.year,
           quarter: entity.quarter,
           isActive: entity.isActive,
@@ -380,6 +362,12 @@ export class HukumService {
         },
       };
 
+      console.log(`[Service] formatToFrontend: Parameter ${index} formatted:`, {
+        id: formattedParam.id,
+        judul: formattedParam.judul,
+        nilaiCount: formattedParam.nilaiList.length,
+      });
+
       return formattedParam;
     });
 
@@ -387,9 +375,6 @@ export class HukumService {
     return result;
   }
 
-  /**
-   * Helper untuk log error
-   */
   private handleError(error: any, operation: string, url?: string): never {
     const errorDetails = {
       operation,
@@ -399,15 +384,15 @@ export class HukumService {
       statusText: error.response?.statusText,
       url: url || error.config?.url,
       method: error.config?.method,
+      headers: error.config?.headers,
     };
 
-    console.error(`[HukumService] Error in ${operation}:`, errorDetails);
+    console.error(`[HukumProdukService] Error in ${operation}:`, errorDetails);
 
-    // Throw error yang lebih informatif
     let errorMessage = `Gagal melakukan operasi ${operation}`;
 
     if (error.response?.status === 404) {
-      errorMessage = `Endpoint tidak ditemukan: ${url}. Periksa apakah backend sudah benar.`;
+      errorMessage = `Endpoint tidak ditemukan: ${url}`;
     } else if (error.response?.status === 500) {
       errorMessage = `Server error: ${error.response?.data?.message || 'Internal server error'}`;
     } else if (error.response?.data?.message) {
@@ -419,9 +404,6 @@ export class HukumService {
     throw new Error(errorMessage);
   }
 
-  /**
-   * Helper untuk debug API calls
-   */
   private logApiCall(method: string, url: string, params?: any, data?: any) {
     console.log(`[Service] API ${method.toUpperCase()}:`, {
       url,
@@ -435,12 +417,12 @@ export class HukumService {
   // CRUD UTAMA
   // =============================================
 
-  async findActive(): Promise<HukumEntity | null> {
+  async findActive(): Promise<HukumProdukOjkEntity | null> {
     const url = `${this.baseUrl}/active`;
     this.logApiCall('GET', url);
 
     try {
-      const response = await api_hukum.get<HukumEntity>(url);
+      const response = await api_hukum_produk.get<HukumProdukOjkEntity>(url);
 
       console.log('[Service] findActive - Response:', {
         status: response.status,
@@ -453,7 +435,6 @@ export class HukumService {
         return null;
       }
 
-      // PERBAIKAN: Pastikan parameters selalu array
       if (!Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
@@ -475,71 +456,69 @@ export class HukumService {
     }
   }
 
-  async findByYearQuarter(year: number, quarter: number): Promise<HukumEntity | null> {
-    // PERBAIKAN: Sesuaikan dengan endpoint backend (lihat controller)
-    // Controller menggunakan @Get(':year/:quarter') jadi endpointnya /kpmr-hukum/:year/:quarter
-    const url = `${this.baseUrl}/${year}/${quarter}`;
+  async findByYearQuarter(year: number, quarter: number): Promise<HukumProdukOjkEntity | null> {
+    const url = this.baseUrl;
+    const params = { year, quarter };
 
-    this.logApiCall('GET', url);
+    this.logApiCall('GET', url, params);
 
     try {
-      const response = await api_hukum.get<any>(url);
+      const response = await api_hukum_produk.get<any>(url, { params });
 
       console.log('[Service] findByYearQuarter - Response:', {
         status: response.status,
-        dataType: typeof response.data,
-        fullUrl: url,
+        hasSuccess: response.data?.success !== undefined,
+        hasData: !!response.data?.data,
       });
 
-      if (!response.data) {
-        console.log('[Service] findByYearQuarter: No data returned');
-        return null;
+      if (response.data?.success !== undefined) {
+        const result = response.data.data;
+
+        if (!result) {
+          console.log('[Service] findByYearQuarter: Data not found (null from backend)');
+          return null;
+        }
+
+        if (!Array.isArray(result.parameters)) {
+          result.parameters = [];
+        }
+
+        return result;
       }
 
       let data = response.data;
-
-      // Pastikan parameters adalah array
-      if (!Array.isArray(data.parameters)) {
-        console.log('[Service] findByYearQuarter: Parameters not array, converting to empty array');
-        data.parameters = [];
+      if (Array.isArray(data)) {
+        data = data.length > 0 ? data[0] : null;
       }
+      if (!data) return null;
+      if (!Array.isArray(data.parameters)) data.parameters = [];
 
-      console.log('[Service] findByYearQuarter: Returning data with', data.parameters.length, 'parameters');
       return data;
     } catch (error: any) {
-      console.log('[Service] findByYearQuarter - Error:', {
-        status: error.response?.status,
-        message: error.message,
-        url,
-      });
-
       if (error.response?.status === 404) {
         console.log('[Service] findByYearQuarter: 404 - Data not found');
         return null;
       }
-
-      this.handleError(error, 'findByYearQuarter', url);
+      this.handleError(error, 'findByYearQuarter', `${url}?year=${year}&quarter=${quarter}`);
     }
   }
 
-  async getAll(): Promise<HukumEntity[]> {
+  async getAll(): Promise<HukumProdukOjkEntity[]> {
     const url = this.baseUrl;
     this.logApiCall('GET', url);
 
     try {
-      const response = await api_hukum.get<any>(url);
+      const response = await api_hukum_produk.get<any>(url);
 
       console.log('[Service] getAll - Response type:', Array.isArray(response.data) ? 'array' : typeof response.data);
 
       let data = response.data;
 
-      // PERBAIKAN: Pastikan selalu return array
       if (!Array.isArray(data)) {
         console.log('[Service] getAll: Converting non-array response to array');
         data = data ? [data] : [];
       }
 
-      // PERBAIKAN: Pastikan setiap item memiliki parameters array
       const result = data.map((item: any, index: number) => ({
         ...item,
         parameters: Array.isArray(item.parameters) ? item.parameters : [],
@@ -552,14 +531,13 @@ export class HukumService {
     }
   }
 
-  async getById(id: number): Promise<HukumEntity> {
+  async getById(id: number): Promise<HukumProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}`;
     this.logApiCall('GET', url);
 
     try {
-      const response = await api_hukum.get<HukumEntity>(url);
+      const response = await api_hukum_produk.get<HukumProdukOjkEntity>(url);
 
-      // PERBAIKAN: Pastikan parameters selalu array
       if (response.data && !Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
@@ -570,48 +548,48 @@ export class HukumService {
     }
   }
 
-  async create(createDto: CreateHukumDto): Promise<HukumEntity> {
+  async create(createDto: CreateHukumProdukInherentDto): Promise<HukumProdukOjkEntity> {
     const url = this.baseUrl;
     this.logApiCall('POST', url, undefined, createDto);
 
     try {
-      const response = await api_hukum.post<HukumEntity>(url, createDto);
+      const response = await api_hukum_produk.post<HukumProdukOjkEntity>(url, createDto);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'create', url);
     }
   }
 
-  async update(id: number, updateDto: UpdateHukumDto): Promise<HukumEntity> {
+  async update(id: number, updateDto: UpdateHukumProdukInherentDto): Promise<HukumProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}`;
     this.logApiCall('PUT', url, undefined, updateDto);
 
     try {
-      const response = await api_hukum.put<HukumEntity>(url, updateDto);
+      const response = await api_hukum_produk.put<HukumProdukOjkEntity>(url, updateDto);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'update', url);
     }
   }
 
-  async updateActiveStatus(id: number, isActive: boolean): Promise<HukumEntity> {
+  async updateActiveStatus(id: number, isActive: boolean): Promise<HukumProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}/status`;
     this.logApiCall('PUT', url, undefined, { isActive });
 
     try {
-      const response = await api_hukum.put<HukumEntity>(url, { isActive });
+      const response = await api_hukum_produk.put<HukumProdukOjkEntity>(url, { isActive });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateActiveStatus', url);
     }
   }
 
-  async updateSummary(id: number, summary: UpdateHukumDto['summary']): Promise<HukumEntity> {
+  async updateSummary(id: number, summary: UpdateHukumProdukInherentDto['summary']): Promise<HukumProdukOjkEntity> {
     const url = `${this.baseUrl}/${id}/summary`;
     this.logApiCall('PUT', url, undefined, { summary });
 
     try {
-      const response = await api_hukum.put<HukumEntity>(url, { summary });
+      const response = await api_hukum_produk.put<HukumProdukOjkEntity>(url, { summary });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateSummary', url);
@@ -623,7 +601,7 @@ export class HukumService {
     this.logApiCall('DELETE', url);
 
     try {
-      const response = await api_hukum.delete<{ message: string; id: number }>(url);
+      const response = await api_hukum_produk.delete<{ message: string; id: number }>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'remove', url);
@@ -634,19 +612,12 @@ export class HukumService {
   // OPERASI PARAMETER
   // =============================================
 
-  async addParameter(hukumId: number, dto: CreateParameterDto): Promise<HukumEntity> {
-    // PERBAIKAN: Sesuaikan dengan endpoint backend
-    // Controller menggunakan @Post(':kpmrId/aspek') untuk KPMR, tapi untuk inherent mungkin berbeda
-    const url = `${this.baseUrl}/${hukumId}/parameters`;
+  async addParameter(inherentId: number, dto: CreateParameterDto): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters`;
 
-    console.log('[Service] addParameter:', {
-      url,
-      hukumId,
-      dto,
-    });
+    console.log('[Service] addParameter:', { url, inherentId, dto });
 
     try {
-      // Pastikan judul adalah string
       const payload: CreateParameterDto = {
         ...dto,
         judul: typeof dto.judul === 'string' ? dto.judul.trim() : String(dto.judul || '').trim(),
@@ -655,16 +626,13 @@ export class HukumService {
 
       this.logApiCall('POST', url, undefined, payload);
 
-      const response = await api_hukum.post<HukumEntity>(url, payload);
+      const response = await api_hukum_produk.post<HukumProdukOjkEntity>(url, payload);
 
-      // PERBAIKAN: Pastikan response memiliki parameters array
       if (response.data && !Array.isArray(response.data.parameters)) {
         response.data.parameters = [];
       }
 
-      console.log('[Service] addParameter - Success:', {
-        newParameterId: response.data.id,
-      });
+      console.log('[Service] addParameter - Success:', { newParameterId: response.data.id });
 
       return response.data;
     } catch (error: any) {
@@ -679,11 +647,10 @@ export class HukumService {
     }
   }
 
-  async updateParameter(hukumId: number, parameterId: number, dto: UpdateParameterDto): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}`;
+  async updateParameter(inherentId: number, parameterId: number, dto: UpdateParameterDto): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}`;
 
     try {
-      // Format payload
       const payload: UpdateParameterDto = { ...dto };
 
       if (dto.judul !== undefined) {
@@ -696,42 +663,42 @@ export class HukumService {
 
       this.logApiCall('PUT', url, undefined, payload);
 
-      const response = await api_hukum.put<HukumEntity>(url, payload);
+      const response = await api_hukum_produk.put<HukumProdukOjkEntity>(url, payload);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateParameter', url);
     }
   }
 
-  async copyParameter(hukumId: number, parameterId: number): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}/copy`;
+  async copyParameter(inherentId: number, parameterId: number): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/copy`;
     this.logApiCall('POST', url);
 
     try {
-      const response = await api_hukum.post<HukumEntity>(url);
+      const response = await api_hukum_produk.post<HukumProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'copyParameter', url);
     }
   }
 
-  async removeParameter(hukumId: number, parameterId: number): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}`;
+  async removeParameter(inherentId: number, parameterId: number): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}`;
     this.logApiCall('DELETE', url);
 
     try {
-      const response = await api_hukum.delete<HukumEntity>(url);
+      const response = await api_hukum_produk.delete<HukumProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'removeParameter', url);
     }
   }
 
-  async reorderParameters(hukumId: number, parameterIds: number[]): Promise<{ message: string }> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/reorder`;
+  async reorderParameters(inherentId: number, parameterIds: number[]): Promise<{ message: string }> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/reorder`;
 
     try {
-      const response = await api_hukum.put<{ message: string }>(url, { parameterIds });
+      const response = await api_hukum_produk.put<{ message: string }>(url, { parameterIds });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'reorderParameters', url);
@@ -742,11 +709,10 @@ export class HukumService {
   // OPERASI NILAI
   // =============================================
 
-  async addNilai(hukumId: number, parameterId: number, dto: CreateNilaiDto): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}/nilai`;
+  async addNilai(inherentId: number, parameterId: number, dto: CreateNilaiDto): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai`;
 
     try {
-      // Pastikan judul.text adalah string
       const payload: CreateNilaiDto = {
         ...dto,
         judul: {
@@ -758,18 +724,17 @@ export class HukumService {
 
       this.logApiCall('POST', url, undefined, payload);
 
-      const response = await api_hukum.post<HukumEntity>(url, payload);
+      const response = await api_hukum_produk.post<HukumProdukOjkEntity>(url, payload);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'addNilai', url);
     }
   }
 
-  async updateNilai(hukumId: number, parameterId: number, nilaiId: number, dto: UpdateNilaiDto): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}/nilai/${nilaiId}`;
+  async updateNilai(inherentId: number, parameterId: number, nilaiId: number, dto: UpdateNilaiDto): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}`;
 
     try {
-      // Format payload
       const payload: UpdateNilaiDto = { ...dto };
 
       if (dto.judul?.text !== undefined) {
@@ -785,42 +750,42 @@ export class HukumService {
 
       this.logApiCall('PUT', url, undefined, payload);
 
-      const response = await api_hukum.put<HukumEntity>(url, payload);
+      const response = await api_hukum_produk.put<HukumProdukOjkEntity>(url, payload);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'updateNilai', url);
     }
   }
 
-  async copyNilai(hukumId: number, parameterId: number, nilaiId: number): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}/nilai/${nilaiId}/copy`;
+  async copyNilai(inherentId: number, parameterId: number, nilaiId: number): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}/copy`;
     this.logApiCall('POST', url);
 
     try {
-      const response = await api_hukum.post<HukumEntity>(url);
+      const response = await api_hukum_produk.post<HukumProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'copyNilai', url);
     }
   }
 
-  async removeNilai(hukumId: number, parameterId: number, nilaiId: number): Promise<HukumEntity> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}/nilai/${nilaiId}`;
+  async removeNilai(inherentId: number, parameterId: number, nilaiId: number): Promise<HukumProdukOjkEntity> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/${nilaiId}`;
     this.logApiCall('DELETE', url);
 
     try {
-      const response = await api_hukum.delete<HukumEntity>(url);
+      const response = await api_hukum_produk.delete<HukumProdukOjkEntity>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'removeNilai', url);
     }
   }
 
-  async reorderNilai(hukumId: number, parameterId: number, nilaiIds: number[]): Promise<{ message: string }> {
-    const url = `${this.baseUrl}/${hukumId}/parameters/${parameterId}/nilai/reorder`;
+  async reorderNilai(inherentId: number, parameterId: number, nilaiIds: number[]): Promise<{ message: string }> {
+    const url = `${this.baseUrl}/${inherentId}/parameters/${parameterId}/nilai/reorder`;
 
     try {
-      const response = await api_hukum.put<{ message: string }>(url, { nilaiIds });
+      const response = await api_hukum_produk.put<{ message: string }>(url, { nilaiIds });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'reorderNilai', url);
@@ -831,24 +796,24 @@ export class HukumService {
   // IMPORT/EXPORT OPERATIONS
   // =============================================
 
-  async exportToExcel(hukumId: number): Promise<any> {
-    const url = `${this.baseUrl}/${hukumId}/export`;
+  async exportToExcel(inherentId: number): Promise<any> {
+    const url = `${this.baseUrl}/${inherentId}/export`;
     this.logApiCall('GET', url);
 
     try {
-      const response = await api_hukum.get<any>(url);
+      const response = await api_hukum_produk.get<any>(url);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'exportToExcel', url);
     }
   }
 
-  async importFromExcel(importData: any): Promise<HukumEntity> {
+  async importFromExcel(importData: any): Promise<HukumProdukOjkEntity> {
     const url = `${this.baseUrl}/import`;
     this.logApiCall('POST', url, undefined, importData);
 
     try {
-      const response = await api_hukum.post<HukumEntity>(url, importData);
+      const response = await api_hukum_produk.post<HukumProdukOjkEntity>(url, importData);
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'importFromExcel', url);
@@ -866,7 +831,7 @@ export class HukumService {
     this.logApiCall('GET', url, params);
 
     try {
-      const response = await api_hukum.get<ReferenceItem[]>(url, { params });
+      const response = await api_hukum_produk.get<ReferenceItem[]>(url, { params });
       return response.data;
     } catch (error: any) {
       this.handleError(error, 'getReferences', url);
@@ -877,37 +842,26 @@ export class HukumService {
   // UTILITY METHODS
   // =============================================
 
-  async checkExists(year: number, quarter: number): Promise<{ exists: boolean; data: HukumEntity | null }> {
+  async checkExists(year: number, quarter: number): Promise<{ exists: boolean; data: HukumProdukOjkEntity | null }> {
     try {
       console.log(`[Service] checkExists for ${year}-Q${quarter}`);
       const data = await this.findByYearQuarter(year, quarter);
-      return {
-        exists: !!data,
-        data,
-      };
+      return { exists: !!data, data };
     } catch (error: any) {
       console.log('[Service] checkExists error:', error.message);
-      return {
-        exists: false,
-        data: null,
-      };
+      return { exists: false, data: null };
     }
   }
 
-  /**
-   * Method yang lebih aman untuk load data
-   */
-  async loadOrCreate(year: number, quarter: number): Promise<HukumEntity> {
+  async loadOrCreate(year: number, quarter: number): Promise<HukumProdukOjkEntity> {
     console.log(`[Service] loadOrCreate: ${year}-Q${quarter}`);
 
     try {
-      // 1. Cari data yang sudah ada
       let data = await this.findByYearQuarter(year, quarter);
 
       if (data) {
         console.log(`[Service] loadOrCreate: Found existing data, ID: ${data.id}`);
 
-        // PERBAIKAN: Pastikan parameters selalu array
         if (!Array.isArray(data.parameters)) {
           data.parameters = [];
         }
@@ -915,10 +869,9 @@ export class HukumService {
         return data;
       }
 
-      // 2. Buat data baru
       console.log(`[Service] loadOrCreate: Creating new data`);
 
-      const createDto: CreateHukumDto = {
+      const createDto: CreateHukumProdukInherentDto = {
         year,
         quarter,
         isActive: true,
@@ -927,7 +880,6 @@ export class HukumService {
 
       data = await this.create(createDto);
 
-      // PERBAIKAN: Pastikan parameters array
       if (!Array.isArray(data.parameters)) {
         data.parameters = [];
       }
@@ -939,15 +891,15 @@ export class HukumService {
         message: error.message,
         year,
         quarter,
+        stack: error.stack,
       });
 
-      // Buat data fallback jika gagal
-      const fallbackData: HukumEntity = {
-        id: -1, // Temporary ID
+      const fallbackData: HukumProdukOjkEntity = {
+        id: -1,
         year,
         quarter,
         isActive: true,
-        parameters: [], // Pastikan array kosong
+        parameters: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -957,14 +909,11 @@ export class HukumService {
     }
   }
 
-  /**
-   * Method yang selalu return array untuk frontend
-   */
   async getFormattedData(year?: number, quarter?: number): Promise<any[]> {
     console.log(`[Service] getFormattedData: year=${year}, quarter=${quarter}`);
 
     try {
-      let data: HukumEntity | null = null;
+      let data: HukumProdukOjkEntity | null = null;
 
       if (year && quarter) {
         data = await this.findByYearQuarter(year, quarter);
@@ -972,7 +921,6 @@ export class HukumService {
         data = await this.findActive();
       }
 
-      // PERBAIKAN: Pastikan selalu return array
       const result = this.formatToFrontend(data);
 
       console.log(`[Service] getFormattedData: Returning ${result.length} parameters`);
@@ -984,14 +932,10 @@ export class HukumService {
         quarter,
       });
 
-      // PERBAIKAN: Return empty array jika error
       return [];
     }
   }
 
-  /**
-   * Format judul dari object ke string untuk parameter
-   */
   formatParameterJudul(judul: any): string {
     if (!judul) return '';
 
@@ -1006,9 +950,6 @@ export class HukumService {
     return String(judul).trim();
   }
 
-  /**
-   * Format judul dari string ke object untuk nilai
-   */
   formatNilaiJudul(judul: any): CreateNilaiDto['judul'] {
     if (!judul) {
       return {
@@ -1038,7 +979,6 @@ export class HukumService {
       };
     }
 
-    // Jika sudah object
     return {
       type: judul.type || 'Tanpa Faktor',
       text: judul.text || '',
@@ -1052,14 +992,9 @@ export class HukumService {
     };
   }
 
-  /**
-   * Validate API connection
-   */
   async validateConnection(): Promise<boolean> {
     try {
-      const response = await api_hukum.get(this.baseUrl, {
-        timeout: 5000,
-      });
+      const response = await api_hukum_produk.get(this.baseUrl, { timeout: 5000 });
       return response.status === 200;
     } catch (error) {
       console.error('[Service] API connection failed:', error);
@@ -1068,6 +1003,5 @@ export class HukumService {
   }
 }
 
-// Export singleton instance
-export const hukumService = new HukumService();
-export default hukumService;
+export const hukumProdukService = new HukumProdukService();
+export default hukumProdukService;

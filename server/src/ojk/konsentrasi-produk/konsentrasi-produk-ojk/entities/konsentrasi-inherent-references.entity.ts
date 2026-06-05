@@ -6,8 +6,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('inherent_references_konsentrasi')
-export class InherentReferenceKonsentrasi {
+@Entity('inherent_references_konsentrasi_ojk')
+export class KonsentrasiReference {
   @PrimaryGeneratedColumn()
   id: number;
 

@@ -13,13 +13,13 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // ============================================================================
-// KPMR PASAR ASPECT DTO (Master Aspek)
+// KPMR ASPECT DTO (Master Aspek)
 // ============================================================================
 export class CreateKPMRPasarAspectDto {
   @ApiProperty({ example: 2024, description: 'Tahun data' })
-  // @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
-  // @IsInt({ message: 'Tahun harus berupa angka' })
-  // @Type(() => Number)
+  @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
+  @IsInt({ message: 'Tahun harus berupa angka' })
+  @Type(() => Number)
   year: number;
 
   @ApiProperty({ example: 'Aspek 1', description: 'Nomor aspek' })
@@ -28,7 +28,10 @@ export class CreateKPMRPasarAspectDto {
   @Length(1, 50, { message: 'Nomor aspek maksimal 50 karakter' })
   aspekNo: string;
 
-  @ApiProperty({ example: 'Tata Kelola Risiko', description: 'Judul aspek' })
+  @ApiProperty({
+    example: 'Tata Kelola Risiko Pasar',
+    description: 'Judul aspek',
+  })
   @IsNotEmpty({ message: 'Judul aspek tidak boleh kosong' })
   @IsString({ message: 'Judul aspek harus berupa string' })
   @Length(1, 255, { message: 'Judul aspek maksimal 255 karakter' })
@@ -50,7 +53,7 @@ export class UpdateKPMRPasarAspectDto {
   @Length(1, 50)
   aspekNo?: string;
 
-  @ApiPropertyOptional({ example: 'Tata Kelola Risiko' })
+  @ApiPropertyOptional({ example: 'Tata Kelola Risiko Pasar' })
   @IsOptional()
   @IsString()
   @Length(1, 255)
@@ -66,13 +69,13 @@ export class UpdateKPMRPasarAspectDto {
 }
 
 // ============================================================================
-// KPMR PASAR QUESTION DTO (Master Pertanyaan)
+// KPMR QUESTION DTO (Master Pertanyaan)
 // ============================================================================
 export class CreateKPMRPasarQuestionDto {
   @ApiProperty({ example: 2024, description: 'Tahun data' })
-  // @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
-  // @IsInt({ message: 'Tahun harus berupa angka' })
-  // @Type(() => Number)
+  @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
+  @IsInt({ message: 'Tahun harus berupa angka' })
+  @Type(() => Number)
   year: number;
 
   @ApiProperty({
@@ -91,7 +94,8 @@ export class CreateKPMRPasarQuestionDto {
   sectionNo: string;
 
   @ApiProperty({
-    example: 'Bagaimana perumusan tingkat risiko yang akan diambil?',
+    example:
+      'Bagaimana perumusan tingkat risiko pasar yang akan diambil?',
     description: 'Teks pertanyaan section',
   })
   @IsNotEmpty({ message: 'Judul pertanyaan tidak boleh kosong' })
@@ -113,7 +117,8 @@ export class UpdateKPMRPasarQuestionDto {
   sectionNo?: string;
 
   @ApiPropertyOptional({
-    example: 'Bagaimana perumusan tingkat risiko yang akan diambil?',
+    example:
+      'Bagaimana perumusan tingkat risiko pasar yang akan diambil?',
   })
   @IsOptional()
   @IsString()
@@ -121,15 +126,15 @@ export class UpdateKPMRPasarQuestionDto {
 }
 
 // ============================================================================
-// KPMR PASAR DEFINITION DTO (Year-Level)
+// KPMR DEFINITION DTO (Year-Level)
 // ============================================================================
 export class CreateKPMRPasarDefinitionDto {
   @ApiProperty({ example: 2024, description: 'Tahun data' })
-  // @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
-  // @IsInt({ message: 'Tahun harus berupa angka bulat' })
-  // @Min(2000, { message: 'Tahun minimal 2000' })
-  // @Max(2100, { message: 'Tahun maksimal 2100' })
-  // @Type(() => Number)
+  @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
+  @IsInt({ message: 'Tahun harus berupa angka bulat' })
+  @Min(2000, { message: 'Tahun minimal 2000' })
+  @Max(2100, { message: 'Tahun maksimal 2100' })
+  @Type(() => Number)
   year: number;
 
   @ApiProperty({ example: 'Aspek 1', description: 'Nomor aspek' })
@@ -138,7 +143,10 @@ export class CreateKPMRPasarDefinitionDto {
   @Length(1, 50, { message: 'Nomor aspek maksimal 50 karakter' })
   aspekNo: string;
 
-  @ApiProperty({ example: 'Tata Kelola Risiko', description: 'Judul aspek' })
+  @ApiProperty({
+    example: 'Tata Kelola Risiko Pasar',
+    description: 'Judul aspek',
+  })
   @IsNotEmpty({ message: 'Judul aspek tidak boleh kosong' })
   @IsString({ message: 'Judul aspek harus berupa string' })
   @Length(1, 255, { message: 'Judul aspek maksimal 255 karakter' })
@@ -159,7 +167,8 @@ export class CreateKPMRPasarDefinitionDto {
   sectionNo: string;
 
   @ApiProperty({
-    example: 'Bagaimana perumusan tingkat risiko yang akan diambil?',
+    example:
+      'Bagaimana perumusan tingkat risiko pasar yang akan diambil?',
     description: 'Teks pertanyaan section',
   })
   @IsNotEmpty({ message: 'Judul section tidak boleh kosong' })
@@ -200,10 +209,10 @@ export class CreateKPMRPasarDefinitionDto {
 export class UpdateKPMRPasarDefinitionDto {
   @ApiPropertyOptional({ example: 2024 })
   @IsOptional()
-  // @IsInt()
-  // @Min(2000)
-  // @Max(2100)
-  // @Type(() => Number)
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  @Type(() => Number)
   year?: number;
 
   @ApiPropertyOptional({ example: 'Aspek 1' })
@@ -212,7 +221,7 @@ export class UpdateKPMRPasarDefinitionDto {
   @Length(1, 50)
   aspekNo?: string;
 
-  @ApiPropertyOptional({ example: 'Tata Kelola Risiko' })
+  @ApiPropertyOptional({ example: 'Tata Kelola Risiko Pasar' })
   @IsOptional()
   @IsString()
   @Length(1, 255)
@@ -233,7 +242,8 @@ export class UpdateKPMRPasarDefinitionDto {
   sectionNo?: string;
 
   @ApiPropertyOptional({
-    example: 'Bagaimana perumusan tingkat risiko yang akan diambil?',
+    example:
+      'Bagaimana perumusan tingkat risiko pasar yang akan diambil?',
   })
   @IsOptional()
   @IsString()
@@ -271,7 +281,7 @@ export class UpdateKPMRPasarDefinitionDto {
 }
 
 // ============================================================================
-// KPMR PASAR SCORE DTO (Quarter-Level)
+// KPMR SCORE DTO (Quarter-Level)
 // ============================================================================
 export class CreateKPMRPasarScoreDto {
   @ApiProperty({ description: 'ID definisi' })
@@ -281,11 +291,11 @@ export class CreateKPMRPasarScoreDto {
   definitionId: number;
 
   @ApiProperty({ example: 2024, description: 'Tahun data' })
-  // @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
-  // @IsInt({ message: 'Tahun harus berupa angka bulat' })
-  // @Min(2000, { message: 'Tahun minimal 2000' })
-  // @Max(2100, { message: 'Tahun maksimal 2100' })
-  // @Type(() => Number)
+  @IsNotEmpty({ message: 'Tahun tidak boleh kosong' })
+  @IsInt({ message: 'Tahun harus berupa angka bulat' })
+  @Min(2000, { message: 'Tahun minimal 2000' })
+  @Max(2100, { message: 'Tahun maksimal 2100' })
+  @Type(() => Number)
   year: number;
 
   @ApiProperty({ example: 'Q1', description: 'Triwulan (Q1, Q2, Q3, Q4)' })
@@ -314,10 +324,10 @@ export class UpdateKPMRPasarScoreDto {
 
   @ApiPropertyOptional({ example: 2024 })
   @IsOptional()
-  // @IsInt()
-  // @Min(2000)
-  // @Max(2100)
-  // @Type(() => Number)
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  @Type(() => Number)
   year?: number;
 
   @ApiPropertyOptional({ example: 'Q1' })

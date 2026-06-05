@@ -6,8 +6,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('inherent_references_rentabilitas')
-export class InherentReferenceRentabilitas {
+@Entity('inherent_references_rentabilitas_ojk')
+export class RentabilitasReference {
   @PrimaryGeneratedColumn()
   id: number;
 

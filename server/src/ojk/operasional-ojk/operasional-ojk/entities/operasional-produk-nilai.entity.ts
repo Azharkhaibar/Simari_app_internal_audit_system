@@ -11,7 +11,9 @@ import {
 import { OperasionalParameter } from './operasional-produk-parameter.entity';
 
 @Entity('operasional_nilai_ojk')
-@Index(['parameterId', 'nomor'], { unique: false })
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['parameterId', 'nomor'])
+@Index(['parameterId', 'orderIndex'])
 export class OperasionalNilai {
   @PrimaryGeneratedColumn()
   id: number;

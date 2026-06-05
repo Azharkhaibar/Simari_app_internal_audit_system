@@ -28,7 +28,16 @@ export class RasService {
    */
   async create(createRasDto: CreateRasDto): Promise<RasData> {
     try {
-      this.logger.log(`Creating new RAS data: ${createRasDto.parameter}`);
+      if (!createRasDto.parameter?.trim()) {
+        throw new BadRequestException('Parameter tidak boleh kosong');
+      }
+      if (!createRasDto.riskCategory?.trim()) {
+        throw new BadRequestException('Kategori risiko tidak boleh kosong');
+      }
+      if (!createRasDto.year) {
+        throw new BadRequestException('Tahun tidak boleh kosong');
+      }
+      this.logger.log(`Creating new RAS data: ${JSON.stringify(createRasDto)}`);
 
       // Check for duplicate parameter in the same year
       const existing = await this.rasRepository.findOne({
@@ -56,7 +65,7 @@ export class RasService {
           })
           .getRawOne();
 
-        const maxNo = maxNoResult?.max || 0;
+        const maxNo = maxNoResult?.max ? Number(maxNoResult.max) : 0;
         autoNo = maxNo + 1;
       }
 
@@ -70,40 +79,51 @@ export class RasService {
           order: { year: 'DESC', createdAt: 'DESC' },
         });
 
-        if (historical) {
+        if (historical?.groupId) {
           groupId = historical.groupId;
         } else {
           groupId = `GID-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         }
       }
 
-      // Create entity object (ID akan auto-generated oleh database)
-      const rasData = this.rasRepository.create({
-        // Basic fields
-        year: createRasDto.year,
-        riskCategory: createRasDto.riskCategory,
-        parameter: createRasDto.parameter.trim(),
-        riskStance: createRasDto.riskStance || 'Moderat',
-        unitType: createRasDto.unitType || 'PERCENTAGE',
-        // Optional fields
-        no: autoNo, // gunakan autoNo yang sudah dihitung
-        statement: createRasDto.statement,
-        formulasi: createRasDto.formulasi,
-        dataTypeExplanation: createRasDto.dataTypeExplanation,
-        notes: createRasDto.notes,
-        rkapTarget: createRasDto.rkapTarget,
-        rasLimit: createRasDto.rasLimit,
-        // Boolean fields
-        hasNumeratorDenominator: createRasDto.hasNumeratorDenominator || false,
-        numeratorLabel: createRasDto.numeratorLabel,
-        denominatorLabel: createRasDto.denominatorLabel,
-        // Monthly values
-        monthlyValues: createRasDto.monthlyValues || {},
-        // Group ID
-        groupId: groupId,
-      });
+      // Bersihkan monthlyValues
+      const cleanedMonthlyValues: Record<number, any> = {};
+      if (createRasDto.monthlyValues) {
+        Object.entries(createRasDto.monthlyValues).forEach(([key, value]) => {
+          const monthKey = Number(key);
+          if (!isNaN(monthKey) && monthKey >= 0 && monthKey <= 11) {
+            cleanedMonthlyValues[monthKey] = {
+              num: value?.num ?? null,
+              den: value?.den ?? null,
+              man: value?.man ?? null,
+            };
+          }
+        });
+      }
 
-      // Save to database (ID akan otomatis di-generate)
+      // Buat entity instance - PERBAIKAN: assign string kosong untuk field nullable
+      const rasData = new RasData();
+      rasData.year = createRasDto.year;
+      rasData.riskCategory = createRasDto.riskCategory;
+      rasData.parameter = createRasDto.parameter.trim();
+      rasData.riskStance = createRasDto.riskStance || 'Moderat';
+      rasData.unitType = createRasDto.unitType || 'PERCENTAGE';
+      rasData.no = autoNo;
+      rasData.statement = createRasDto.statement || '';
+      rasData.formulasi = createRasDto.formulasi || '';
+      rasData.dataTypeExplanation = createRasDto.dataTypeExplanation || '';
+      rasData.notes = createRasDto.notes || '';
+      rasData.rkapTarget = createRasDto.rkapTarget || '';
+      rasData.rasLimit = createRasDto.rasLimit || '';
+      rasData.hasNumeratorDenominator =
+        createRasDto.hasNumeratorDenominator || false;
+      rasData.numeratorLabel = createRasDto.numeratorLabel || '';
+      rasData.denominatorLabel = createRasDto.denominatorLabel || '';
+      rasData.monthlyValues = cleanedMonthlyValues;
+      rasData.groupId = groupId;
+
+      this.logger.log(`Saving RAS data: ${JSON.stringify(rasData)}`);
+
       const savedData = await this.rasRepository.save(rasData);
       this.logger.log(`RAS data created successfully with ID: ${savedData.id}`);
       return savedData;
@@ -112,14 +132,20 @@ export class RasService {
         `Error creating RAS data: ${error.message}`,
         error.stack,
       );
-      // Throw BadRequestException untuk error duplikat, selain itu throw error asli
+
       if (error.code === '23505') {
-        // PostgreSQL duplicate key error
         throw new BadRequestException(
           `Parameter "${createRasDto.parameter}" sudah ada di tahun ${createRasDto.year}`,
         );
       }
-      throw error;
+
+      if (error.code === 'ER_NO_SUCH_TABLE') {
+        throw new BadRequestException(
+          'Tabel risk_appetite_statement belum ada. Jalankan migrasi database.',
+        );
+      }
+
+      throw new BadRequestException(`Gagal membuat data: ${error.message}`);
     }
   }
 
@@ -147,9 +173,7 @@ export class RasService {
       if (filterDto?.search) {
         query.andWhere(
           '(ras.parameter ILIKE :search OR ras.statement ILIKE :search)',
-          {
-            search: `%${filterDto.search}%`,
-          },
+          { search: `%${filterDto.search}%` },
         );
       }
 
@@ -254,7 +278,6 @@ export class RasService {
    * Find RAS data by ID
    */
   async findOne(id: number): Promise<RasData> {
-    // ⬅️ UBAH PARAMETER KE number
     try {
       this.logger.log(`Finding RAS data by ID: ${id}`);
 
@@ -280,7 +303,6 @@ export class RasService {
    * Update RAS data
    */
   async update(id: number, updateRasDto: UpdateRasDto): Promise<RasData> {
-    // ⬅️ UBAH PARAMETER KE number
     try {
       this.logger.log(`Updating RAS data: ${id}`);
 
@@ -295,7 +317,7 @@ export class RasService {
           where: {
             year: rasData.year,
             parameter: ILike(updateRasDto.parameter.trim()),
-            id: Not(id), // TypeORM akan handle perbandingan id:number vs Not(id)
+            id: Not(id),
           },
         });
 
@@ -306,28 +328,29 @@ export class RasService {
         }
       }
 
-      // Update fields if provided
+      // Update fields if provided - PERBAIKAN: assign string kosong
       if (updateRasDto.parameter !== undefined)
         rasData.parameter = updateRasDto.parameter.trim();
       if (updateRasDto.riskCategory !== undefined)
         rasData.riskCategory = updateRasDto.riskCategory;
       if (updateRasDto.statement !== undefined)
-        rasData.statement = updateRasDto.statement;
+        rasData.statement = updateRasDto.statement || '';
       if (updateRasDto.formulasi !== undefined)
-        rasData.formulasi = updateRasDto.formulasi;
+        rasData.formulasi = updateRasDto.formulasi || '';
       if (updateRasDto.dataTypeExplanation !== undefined)
-        rasData.dataTypeExplanation = updateRasDto.dataTypeExplanation;
-      if (updateRasDto.notes !== undefined) rasData.notes = updateRasDto.notes;
+        rasData.dataTypeExplanation = updateRasDto.dataTypeExplanation || '';
+      if (updateRasDto.notes !== undefined)
+        rasData.notes = updateRasDto.notes || '';
       if (updateRasDto.rkapTarget !== undefined)
-        rasData.rkapTarget = updateRasDto.rkapTarget;
+        rasData.rkapTarget = updateRasDto.rkapTarget || '';
       if (updateRasDto.rasLimit !== undefined)
-        rasData.rasLimit = updateRasDto.rasLimit;
+        rasData.rasLimit = updateRasDto.rasLimit || '';
       if (updateRasDto.hasNumeratorDenominator !== undefined)
         rasData.hasNumeratorDenominator = updateRasDto.hasNumeratorDenominator;
       if (updateRasDto.numeratorLabel !== undefined)
-        rasData.numeratorLabel = updateRasDto.numeratorLabel;
+        rasData.numeratorLabel = updateRasDto.numeratorLabel || '';
       if (updateRasDto.denominatorLabel !== undefined)
-        rasData.denominatorLabel = updateRasDto.denominatorLabel;
+        rasData.denominatorLabel = updateRasDto.denominatorLabel || '';
       if (updateRasDto.monthlyValues !== undefined)
         rasData.monthlyValues = updateRasDto.monthlyValues;
       if (updateRasDto.groupId !== undefined)
@@ -355,7 +378,7 @@ export class RasService {
    * Update monthly values for specific month
    */
   async updateMonthlyValues(
-    id: number, // ⬅️ UBAH PARAMETER KE number
+    id: number,
     updateMonthlyValuesDto: UpdateMonthlyValuesDto,
   ): Promise<RasData> {
     try {
@@ -393,7 +416,6 @@ export class RasService {
    * Update tindak lanjut
    */
   async updateTindakLanjut(id: number, tindakLanjut: any): Promise<RasData> {
-    // ⬅️ UBAH PARAMETER KE number
     try {
       this.logger.log(`Updating tindak lanjut for ID ${id}`);
 
@@ -416,7 +438,6 @@ export class RasService {
    * Delete RAS data
    */
   async remove(id: number): Promise<void> {
-    // ⬅️ UBAH PARAMETER KE number
     try {
       this.logger.log(`Deleting RAS data: ${id}`);
 
@@ -447,7 +468,6 @@ export class RasService {
       const result: any[] = [];
 
       for (const item of currentYearData) {
-        // Get historical data for stats calculation
         const historicalYears = [year - 3, year - 2, year - 1];
         const stats = await this.calculateStats(item, historicalYears);
 
@@ -494,7 +514,6 @@ export class RasService {
 
       for (const itemData of importRasDto.data) {
         try {
-          // Check if item already exists
           const existing = await this.rasRepository.findOne({
             where: {
               year: importRasDto.year,
@@ -507,7 +526,6 @@ export class RasService {
             continue;
           }
 
-          // Prepare data for create/update
           const createDto: CreateRasDto = {
             year: importRasDto.year,
             riskCategory: itemData.riskCategory || 'Lainnya',
@@ -529,12 +547,10 @@ export class RasService {
           };
 
           if (existing && importRasDto.overrideExisting) {
-            // Update existing
             const updated = await this.update(existing.id, createDto);
             importedItems.push(updated);
             successCount++;
           } else {
-            // Create new
             const created = await this.create(createDto);
             importedItems.push(created);
             successCount++;
@@ -585,7 +601,6 @@ export class RasService {
           notes: item.notes,
         };
 
-        // Add monthly values for selected months
         months.forEach((month) => {
           const monthData = item.monthlyValues?.[month];
           exportItem[`month_${month}_num`] = monthData?.num ?? '';
@@ -648,18 +663,13 @@ export class RasService {
     targetYear: number,
   ): Promise<RasData | null> {
     try {
-      // First try by groupId
       if (item.groupId) {
         const found = await this.rasRepository.findOne({
-          where: {
-            year: targetYear,
-            groupId: item.groupId,
-          },
+          where: { year: targetYear, groupId: item.groupId },
         });
         if (found) return found;
       }
 
-      // Fallback to parameter name and category
       return await this.rasRepository.findOne({
         where: {
           year: targetYear,
@@ -684,7 +694,7 @@ export class RasService {
         const histItem = await this.getHistoricalItem(item, year);
 
         if (histItem && histItem.monthlyValues) {
-          Object.values(histItem.monthlyValues).forEach((monthData) => {
+          Object.values(histItem.monthlyValues).forEach((monthData: any) => {
             const val = this.calculateActualValue(monthData, histItem.unitType);
             if (val !== null) {
               const normalized = this.normalizeUnitValue(
@@ -698,9 +708,7 @@ export class RasService {
         }
       }
 
-      if (allValues.length === 0) {
-        return null;
-      }
+      if (allValues.length === 0) return null;
 
       const n = allValues.length;
       const min = Math.min(...allValues);
@@ -751,10 +759,7 @@ export class RasService {
       if (monthData.num !== undefined && monthData.den !== undefined) {
         const num = this.parseNumber(monthData.num);
         const den = this.parseNumber(monthData.den);
-
-        if (num !== null && den !== null && den !== 0) {
-          return num / den;
-        }
+        if (num !== null && den !== null && den !== 0) return num / den;
       }
 
       return null;
@@ -774,13 +779,9 @@ export class RasService {
   ): number {
     try {
       let normalized = value;
-
-      if (fromUnit === 'X' && toUnit === 'PERCENTAGE') {
-        normalized = value * 100;
-      } else if (fromUnit === 'PERCENTAGE' && toUnit === 'X') {
+      if (fromUnit === 'X' && toUnit === 'PERCENTAGE') normalized = value * 100;
+      else if (fromUnit === 'PERCENTAGE' && toUnit === 'X')
         normalized = value / 100;
-      }
-
       return normalized;
     } catch (error) {
       this.logger.error(`Error normalizing unit value: ${error.message}`);
@@ -793,20 +794,13 @@ export class RasService {
    */
   private parseNumber(input: any): number | null {
     try {
-      if (input === null || input === undefined || input === '') {
-        return null;
-      }
-
-      if (typeof input === 'number') {
-        return input;
-      }
-
+      if (input === null || input === undefined || input === '') return null;
+      if (typeof input === 'number') return input;
       if (typeof input === 'string') {
         const cleanStr = input.replace(/[^0-9.-]/g, '').replace(',', '.');
         const val = parseFloat(cleanStr);
         return isNaN(val) ? null : val;
       }
-
       return null;
     } catch (error) {
       this.logger.error(`Error parsing number: ${error.message}`);
@@ -824,7 +818,6 @@ export class RasService {
   }> {
     try {
       const count = await this.rasRepository.count();
-
       return {
         status: 'healthy',
         message: `RAS service is working. Database has ${count} records.`,
@@ -832,7 +825,6 @@ export class RasService {
       };
     } catch (error) {
       this.logger.error(`Health check failed: ${error.message}`);
-
       return {
         status: 'unhealthy',
         message: `RAS service error: ${error.message}`,

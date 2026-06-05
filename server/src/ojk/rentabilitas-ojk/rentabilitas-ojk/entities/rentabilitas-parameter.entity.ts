@@ -9,12 +9,13 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-
+import { Rentabilitas } from './rentabilitas-ojk.entity';
 import { RentabilitasNilai } from './rentabilitas-nilai.entity';
-import { RentabilitasProdukOjk } from './rentabilitas-ojk.entity';
 
-@Entity('rentabilitas_parameters')
-@Index(['rentabilitasProdukOjkId', 'nomor'], { unique: false })
+@Entity('rentabilitas_parameters_ojk')
+// ========== ⬇️ DIUBAH: index ⬇️ ==========
+@Index(['rentabilitasId', 'nomor'])
+@Index(['rentabilitasId', 'orderIndex'])
 export class RentabilitasParameter {
   @PrimaryGeneratedColumn()
   id: number;
@@ -36,21 +37,15 @@ export class RentabilitasParameter {
     underlying?: string[];
   };
 
-  // Foreign key ke RentabilitasProdukOjk
-  @Column({ name: 'rentabilitas_produk_ojk_id' })
-  rentabilitasProdukOjkId: number;
+  @Column({ name: 'rentabilitas_ojk_id' })
+  rentabilitasId: number;
 
-  @ManyToOne(
-    () => RentabilitasProdukOjk,
-    (rentabilitas) => rentabilitas.parameters,
-    {
-      onDelete: 'CASCADE',
-    },
-  )
-  @JoinColumn({ name: 'rentabilitas_produk_ojk_id' })
-  rentabilitasProdukOjk: RentabilitasProdukOjk;
+  @ManyToOne(() => Rentabilitas, (rentabilitas) => rentabilitas.parameters, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'rentabilitas_ojk_id' })
+  rentabilitas: Rentabilitas;
 
-  // Relasi ke nilai
   @OneToMany(() => RentabilitasNilai, (nilai) => nilai.parameter, {
     cascade: true,
   })

@@ -24,7 +24,7 @@ import {
 } from '@nestjs/swagger';
 
 // PERBAIKAN: Import service dengan path yang benar
-import { KpmrKreditService } from './kredit-produk-kpmr.service';
+import { KpmrKreditProdukService } from './kredit-produk-kpmr.service';
 
 import {
   CreateKpmrKreditOjkDto,
@@ -41,23 +41,23 @@ import {
   FrontendAspekResponseDto,
   FrontendKpmrResponseDto,
   FrontendPertanyaanResponseDto,
-} from './dto/kredit-produk.dto';
+} from './dto/kredit-produk-kpmr.dto';
 
 @ApiTags('KreditProdukKpmr')
-@Controller('kpmr-kredit')
+@Controller('kpmr-kredit-produk')
 @UseInterceptors(ClassSerializerInterceptor)
-export class KpmrKreditController {
-  constructor(private readonly kpmrService: KpmrKreditService) {}
+export class KpmrKreditProdukController {
+  constructor(private readonly kpmrService: KpmrKreditProdukService) {}
 
   // ========== KPMR ENDPOINTS ==========
   @Post()
   @ApiOperation({ summary: 'Buat KPMR baru' })
   async create(
     @Body() createDto: CreateKpmrKreditOjkDto,
-    @Request() req,
+    @Request() req, // ✅ TAMBAHKAN REQUEST
   ): Promise<FrontendKpmrResponseDto> {
-    const userId = req.user?.id || 'system';
-    return this.kpmrService.createKpmr(createDto, userId);
+    const userId = req.user?.id || 'system'; // ✅ AMBIL USER ID
+    return this.kpmrService.createKpmr(createDto, userId); // ✅ KIRIM 2 PARAMETER!
   }
 
   @Get()
@@ -320,7 +320,6 @@ export class KpmrKreditController {
     if (isNaN(aspekIdNum)) {
       throw new BadRequestException('aspekId harus berupa angka');
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return this.kpmrService.createPertanyaan(aspekIdNum, createDto);
   }
 
@@ -413,12 +412,13 @@ export class KpmrKreditController {
   @Get(':id/validate')
   @ApiOperation({ summary: 'Validasi data KPMR' })
   async validateKpmr(
-    @Param('id') id: string,
+    @Param('id') id: string, // ✅ TERIMA ID, BUKAN YEAR/QUARTER!
   ): Promise<{ isValid: boolean; errors: string[]; warnings: string[] }> {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) {
       throw new BadRequestException('ID harus berupa angka');
     }
+
 
     return this.kpmrService.validateKpmrData(idNum);
   }
@@ -431,6 +431,7 @@ export class KpmrKreditController {
       throw new BadRequestException('ID harus berupa angka');
     }
 
+    // ✅ PANGGIL METHOD YANG BARU
     return this.kpmrService.getKpmrStatistics(idNum);
   }
 }
