@@ -1,0 +1,1 @@
+entity rekap data 0 - 2, ringkasan, peringkat sudh di sesuaikan tinggal sesuain entity terbaru dgn ekosistem backend

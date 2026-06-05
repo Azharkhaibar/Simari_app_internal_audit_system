@@ -1,0 +1,177 @@
+import * as XLSX from 'xlsx-js-style';
+import { saveAs } from 'file-saver';
+
+export function exportInherent({ rows = [], year, quarter, categoryLabel = 'PasarProduk' }) {
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+
+  /* ======================
+     HEADER START POSITION
+     ====================== */
+  const START_COL = 2; // C
+  const START_ROW = 12; // row 13 (0-based)
+
+  /* ======================
+     STYLE HELPERS
+     ====================== */
+  const headerBlue = {
+    fill: { fgColor: { rgb: 'FF1E3A8A' } },
+    font: { color: { rgb: 'FFFFFFFF' }, bold: true },
+    alignment: { horizontal: 'center', vertical: 'center' },
+  };
+
+  const headerBlueDark = {
+    fill: { fgColor: { rgb: 'FF0F172A' } },
+    font: { color: { rgb: 'FFFFFFFF' }, bold: true },
+    alignment: { horizontal: 'center', vertical: 'center' },
+  };
+
+  const riskStyles = {
+    Low: {
+      fill: { fgColor: { rgb: 'FF2ECC71' } },
+      font: { color: { rgb: 'FFFFFFFF' }, bold: true },
+    },
+    'Low To Moderate': {
+      fill: { fgColor: { rgb: 'FFA3E635' } },
+      font: { color: { rgb: 'FF000000' }, bold: true },
+    },
+    Moderate: {
+      fill: { fgColor: { rgb: 'FFFACC15' } },
+      font: { color: { rgb: 'FF000000' }, bold: true },
+    },
+    'Moderate To High': {
+      fill: { fgColor: { rgb: 'FFF97316' } },
+      font: { color: { rgb: 'FF000000' }, bold: true },
+    },
+    High: {
+      fill: { fgColor: { rgb: 'FFFF0000' } },
+      font: { color: { rgb: 'FFFFFFFF' }, bold: true },
+    },
+  };
+
+  const center = { alignment: { horizontal: 'center', vertical: 'center' } };
+
+  /* ======================
+     HEADER ROW 1 (GROUP)
+     ====================== */
+  const groupHeaders = [
+    { label: 'Parameter', span: 3 },
+    { label: 'Nilai', span: 4 },
+    { label: 'Risk Level', span: 5 },
+    { label: 'Hasil', span: 4 },
+  ];
+
+  let col = START_COL;
+  groupHeaders.forEach((g) => {
+    const start = XLSX.utils.encode_cell({ r: START_ROW, c: col });
+
+    ws[start] = { v: g.label, s: headerBlue };
+    ws['!merges'] = ws['!merges'] || [];
+    ws['!merges'].push({
+      s: { r: START_ROW, c: col },
+      e: { r: START_ROW, c: col + g.span - 1 },
+    });
+
+    col += g.span;
+  });
+
+  /* ======================
+     HEADER ROW 2 (SUB)
+     ====================== */
+  const subHeaders = ['No', 'Bobot', 'Parameter', 'No', 'Nilai', 'Bobot', '% Portofolio', 'Low', 'Low To Moderate', 'Moderate', 'Moderate To High', 'High', 'Hasil', 'Peringkat', 'Weighted', 'Keterangan'];
+
+  subHeaders.forEach((label, i) => {
+    const addr = XLSX.utils.encode_cell({
+      r: START_ROW + 1,
+      c: START_COL + i,
+    });
+
+    const style = riskStyles[label] ?? (['Hasil', 'Peringkat', 'Weighted', 'Keterangan'].includes(label) ? headerBlueDark : headerBlue);
+
+    ws[addr] = { v: label, s: { ...style, ...center } };
+  });
+
+  /* ======================
+     HELPER: NORMALIZE NILAI
+     ====================== */
+  const resolveNilaiLabel = (nilai) => {
+    if (!nilai) return '';
+    if (typeof nilai === 'string') return nilai;
+    if (typeof nilai === 'number') return String(nilai);
+    if (nilai.label) return nilai.label;
+    if (nilai.text) return nilai.text;
+    if (nilai.value) return String(nilai.value);
+    return '';
+  };
+
+  /* ======================
+     DATA ROWS
+     ====================== */
+  rows.forEach((row, i) => {
+    const r = START_ROW + 2 + i;
+
+    const nilai = Array.isArray(row.nilaiList) && row.nilaiList.length > 0 ? row.nilaiList[0] : null;
+
+    const risk = nilai?.level || {};
+    const riskKey = nilai?.riskLevel;
+
+    const values = [
+      // ===== PARAMETER =====
+      String(row.nomor ?? ''),
+      Number(row.bobot ?? ''),
+      String(row.judul ?? ''),
+
+      // ===== NILAI =====
+      String(nilai?.nomor ?? ''),
+      nilai ? resolveNilaiLabel(nilai.judul ?? nilai.nilai) : 'Belum ada nilai',
+      Number(nilai?.bobot ?? 0),
+      Number(nilai?.persenPortofolio ?? 0),
+
+      // ===== RISK LEVEL =====
+      riskKey === 'low' || risk.low ? '✔' : '',
+      riskKey === 'lowToModerate' || risk.lowToModerate ? '✔' : '',
+      riskKey === 'moderate' || risk.moderate ? '✔' : '',
+      riskKey === 'moderateToHigh' || risk.moderateToHigh ? '✔' : '',
+      riskKey === 'high' || risk.high ? '✔' : '',
+
+      // ===== HASIL =====
+      String(nilai?.hasil ?? ''),
+      String(nilai?.peringkat ?? ''),
+      Number(nilai?.weighted ?? 0),
+      String(nilai?.keterangan ?? ''),
+    ];
+
+    values.forEach((val, j) => {
+      const addr = XLSX.utils.encode_cell({
+        r,
+        c: START_COL + j,
+      });
+
+      ws[addr] = {
+        v: val,
+        s: { alignment: { vertical: 'center' } },
+      };
+    });
+  });
+
+  /* ======================
+     COLUMN WIDTH
+     ====================== */
+  ws['!cols'] = [{ wch: 6 }, { wch: 8 }, { wch: 32 }, { wch: 6 }, { wch: 32 }, { wch: 8 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 20 }];
+
+  ws['!ref'] = XLSX.utils.encode_range({
+    s: { r: START_ROW, c: START_COL },
+    e: { r: START_ROW + rows.length + 1, c: START_COL + 15 },
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Inherent Risk');
+
+  const buffer = XLSX.write(wb, {
+    bookType: 'xlsx',
+    type: 'array',
+    cellStyles: true,
+  });
+
+  const qStr = quarter ? String(quarter).toUpperCase() : '';
+  saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `Inherent_${categoryLabel}_${year}_${qStr}.xlsx`);
+}
